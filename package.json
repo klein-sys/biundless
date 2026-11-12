@@ -1,0 +1,23 @@
+{
+  "name": "ashen-tangent",
+  "version": "1.0.0",
+  "description": "ASHEN TANGENT: Chronicles of the Derivative — MATH 101 Differential Calculus Dark Fantasy 3D Action RPG",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@types/three": "^0.187.0",
+    "three": "^0.187.0"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8",
+    "vitest": "^5.1.0"
+  }
+}

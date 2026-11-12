@@ -1,0 +1,13 @@
+{
+  "name": "awesome-gamedev-agent-skills",
+  "displayName": "Awesome GameDev Skills",
+  "description": "Cross-engine game-development Agent Skills (79 skills + master router) across 12 engines, disciplines, genres, and workflows.",
+  "author": "gamedev-skills",
+  "homepage": "https://gamedev-skills.github.io/awesome-gamedev-agent-skills/",
+  "repository": "https://github.com/gamedev-skills/awesome-gamedev-agent-skills",
+  "suggestedPrompts": [
+    "Use the gamedev router to plan and implement a new gameplay mechanic",
+    "Review my game's feel, camera, and input responsiveness",
+    "Set up procedural generation, save systems, or AI behavior for my game"
+  ]
+}
