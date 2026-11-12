@@ -52,3 +52,4 @@ describe('GraphicsSettings seam', () => {
     expect(loadSettings(storage)).toEqual(DEFAULT_SETTINGS);
   });
 });
+

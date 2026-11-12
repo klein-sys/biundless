@@ -43,3 +43,4 @@ npm test        # Vitest unit tests (calculus, combat, boss AI, input, settings)
 npm run build   # TypeScript type-check + Vite production build
 npm run dev     # Start local Vite dev server
 ```
+

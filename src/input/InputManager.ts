@@ -234,3 +234,4 @@ export class InputManager {
     this.canvas.addEventListener('touchcancel', endTouch, { passive: true });
   }
 }
+

@@ -6,3 +6,4 @@ const uiRoot = document.getElementById('ui-root') as HTMLElement;
 
 const engine = new GameEngine(canvas, uiRoot);
 engine.start();
+

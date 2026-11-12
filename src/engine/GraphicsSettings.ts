@@ -141,3 +141,4 @@ export function saveSettings(
     // Ignore storage quota / private mode errors
   }
 }
+

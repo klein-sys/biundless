@@ -85,3 +85,4 @@ export function createWardShellMaterial(colorHex: number): THREE.ShaderMaterial 
     `,
   });
 }
+

@@ -140,3 +140,4 @@ export class DualCameraController {
     camera.lookAt(this.smoothedLook);
   }
 }
+

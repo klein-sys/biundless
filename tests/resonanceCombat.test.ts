@@ -98,3 +98,4 @@ describe('resonanceCombat seam', () => {
     expect(computeEffectiveStat(player, 'attack')).toBe(baseAtk);
   });
 });
+

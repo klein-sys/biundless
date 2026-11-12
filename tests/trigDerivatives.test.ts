@@ -76,3 +76,4 @@ describe('trigDerivatives seam', () => {
     expect(example.damageMultiplier).toBeCloseTo(3.4, 2);
   });
 });
+

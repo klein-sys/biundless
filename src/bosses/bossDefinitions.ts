@@ -59,3 +59,4 @@ export const BOSS_CONFIGS: Record<BossId, BossConfig> = {
 };
 
 export const BOSS_ORDER: readonly BossId[] = ['witch', 'lich', 'dragon'];
+

@@ -50,3 +50,4 @@ export class ActionBuffer {
     this.pressedAt.clear();
   }
 }
+
