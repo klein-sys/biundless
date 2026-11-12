@@ -1,5 +1,10 @@
 import * as THREE from 'three';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { ProceduralAudio } from '../audio/ProceduralAudio';
+import { VfxSystem } from './VfxSystem';
 import {
   applyDamageToBoss,
   createBossRuntime,
@@ -68,13 +73,17 @@ interface ActiveShockwave {
 
 export class GameEngine {
   private readonly renderer: THREE.WebGLRenderer;
+  private readonly composer: EffectComposer;
+  private readonly bloomPass: UnrealBloomPass;
   private readonly scene: THREE.Scene;
   private readonly camera: THREE.PerspectiveCamera;
   private readonly timer = new THREE.Timer();
   private readonly arena: ArenaBundle;
+  private readonly vfx: VfxSystem;
   private readonly playerRig: PlayerRig;
   private readonly tangentArc: TangentArcVisual;
   private readonly keyLight: THREE.DirectionalLight;
+  private readonly rimLight: THREE.DirectionalLight;
   private readonly bossLight: THREE.PointLight;
   private readonly audio = new ProceduralAudio();
   private readonly cameraCtrl = new DualCameraController();
@@ -101,8 +110,10 @@ export class GameEngine {
   private hitStopRemaining = 0;
   private timeScale = 1;
   private totalTime = 0;
+  private walkCyclePhase = 0;
   private bladeSwingTimer = 0;
   private bossVictoryPendingTimer = 0;
+  private bloomEnabled = true;
 
   private fpsAccumulator = 0;
   private lastFrameTimestamp = performance.now();
@@ -115,22 +126,35 @@ export class GameEngine {
 
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.05;
+    this.renderer.toneMappingExposure = 1.12;
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
+    this.renderer.info.autoReset = false;
 
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x090a0f);
-    this.scene.fog = new THREE.FogExp2(0x090a0f, 0.024);
+    this.scene.background = new THREE.Color(0x0b0d16);
+    this.scene.fog = new THREE.FogExp2(0x101320, 0.017);
 
-    this.camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.1, 140);
+    this.camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.1, 160);
     this.camera.add(new THREE.Object3D());
 
-    // Three.js r187 lighting rig
-    const hemi = new THREE.HemisphereLight(0x8aa2c8, 0x261d17, 0.95);
+    // Post-processing pipeline (UnrealBloomPass enabled on High/Ultra presets)
+    this.composer = new EffectComposer(this.renderer);
+    this.composer.addPass(new RenderPass(this.scene, this.camera));
+    this.bloomPass = new UnrealBloomPass(
+      new THREE.Vector2(window.innerWidth, window.innerHeight),
+      0.52, // subtle luminous dark fantasy bloom
+      0.45,
+      0.72,
+    );
+    this.composer.addPass(this.bloomPass);
+    this.composer.addPass(new OutputPass());
+
+    // Three.js r187 dark-fantasy 3-point lighting rig
+    const hemi = new THREE.HemisphereLight(0x88a4d8, 0x2b2019, 1.15);
     this.scene.add(hemi);
 
-    this.keyLight = new THREE.DirectionalLight(0xf3dfc0, 2.6);
-    this.keyLight.position.set(10, 18, 9);
+    this.keyLight = new THREE.DirectionalLight(0xf6dec0, 2.8);
+    this.keyLight.position.set(12, 20, 11);
     const cam = this.keyLight.shadow.camera;
     cam.near = 2;
     cam.far = 55;
@@ -140,15 +164,22 @@ export class GameEngine {
     cam.bottom = -24;
     this.scene.add(this.keyLight);
 
-    this.bossLight = new THREE.PointLight(0xc8a464, 3.2, 22);
+    this.rimLight = new THREE.DirectionalLight(0x6d92d8, 1.35);
+    this.rimLight.position.set(-14, 11, -16);
+    this.scene.add(this.rimLight);
+
+    this.bossLight = new THREE.PointLight(0xc8a464, 4.2, 26);
     this.bossLight.position.set(0, 4, -8);
     this.scene.add(this.bossLight);
 
     this.arena = createArenaEnvironment();
     this.scene.add(this.arena.group);
 
+    this.vfx = new VfxSystem(this.scene);
+
     this.playerRig = createPlayerModel();
     this.playerRig.root.position.copy(this.playerPos);
+    this.playerRig.setSigilAccent(SIGIL_BY_ID[this.player.selectedSigil].accentHex);
     this.scene.add(this.playerRig.root);
     this.scene.add(this.camera);
     this.camera.add(this.playerRig.firstPersonBlade);
@@ -160,6 +191,7 @@ export class GameEngine {
     this.input = new InputManager(canvas, {
       onSelectSigil: (sigil) => {
         this.player.selectedSigil = sigil;
+        this.playerRig.setSigilAccent(SIGIL_BY_ID[sigil].accentHex);
         this.audio.unlock();
         this.ui.showToast(`ATTUNED: ${SIGIL_BY_ID[sigil].label}`);
       },
@@ -202,6 +234,7 @@ export class GameEngine {
       },
       onSelectSigil: (sigil) => {
         this.player.selectedSigil = sigil;
+        this.playerRig.setSigilAccent(SIGIL_BY_ID[sigil].accentHex);
         const idx = DERIVATIVE_SIGILS.findIndex((s) => s.id === sigil);
         if (idx >= 0) this.input.setCurrentSigilIndex(idx);
       },
@@ -290,12 +323,17 @@ export class GameEngine {
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(w, h);
+    this.composer.setSize(w, h);
+    this.bloomPass.resolution.set(w, h);
     this.syncControlVisibility();
   }
 
   private applyGraphicsSettings(): void {
     const profile = PRESET_PROFILES[this.settings.preset];
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, profile.maxDpr));
+    const dpr = Math.min(window.devicePixelRatio || 1, profile.maxDpr);
+    this.renderer.setPixelRatio(dpr);
+    this.composer.setPixelRatio(dpr);
+    this.bloomEnabled = profile.bloomGlow;
     this.renderer.shadowMap.enabled = profile.shadows;
     this.keyLight.castShadow = profile.shadows;
     if (this.keyLight.shadow.mapSize.width !== profile.shadowMapSize) {
@@ -324,8 +362,11 @@ export class GameEngine {
     this.cameraCtrl.lockedOn = false;
     this.playerPos.set(0, 0, 8);
     this.player = createInitialPlayerState();
-    this.scene.background = new THREE.Color(0x090a0f);
-    (this.scene.fog as THREE.FogExp2).color.setHex(0x090a0f);
+    this.playerRig.setSigilAccent(SIGIL_BY_ID[this.player.selectedSigil].accentHex);
+    this.scene.background = new THREE.Color(0x0b0d16);
+    (this.scene.fog as THREE.FogExp2).color.setHex(0x101320);
+    this.arena.setSkyMood(0x0b1024, 0x1a1528, 0xe8c174);
+    this.rimLight.color.setHex(0x6d92d8);
     for (const fg of this.arena.fogGates) fg.group.visible = true;
     this.ui.showToast('SANCTUARY HUB — APPROACH A FOG GATE');
   }
@@ -353,12 +394,16 @@ export class GameEngine {
 
     this.scene.background = new THREE.Color(cfg.arenaMoodHex);
     (this.scene.fog as THREE.FogExp2).color.setHex(cfg.arenaMoodHex);
+    const zenith = id === 'witch' ? 0x0c132d : id === 'lich' ? 0x081a14 : 0x1e0d0c;
+    this.arena.setSkyMood(zenith, cfg.arenaMoodHex, cfg.accentColor);
+    this.rimLight.color.setHex(cfg.accentColor);
     this.bossLight.color.setHex(cfg.accentColor);
     this.audio.playBossCue();
     this.ui.showToast(`${cfg.name.toUpperCase()} — ${cfg.title.toUpperCase()}`);
   }
 
   private clearCombatEntities(): void {
+    this.vfx.clear();
     for (const p of this.projectiles) this.scene.remove(p.mesh);
     this.projectiles.length = 0;
     for (const s of this.shockwaves) this.scene.remove(s.mesh);
@@ -411,10 +456,11 @@ export class GameEngine {
     if (!modalOpen && this.started) {
       this.stepSimulation(renderedDt);
     } else {
-      // Gently animate sanctuary fog gates even on title screen
+      // Gently animate sanctuary fog gates, braziers, sky & slow camera orbit on title screen
       this.totalTime += renderedDt;
-      for (const fg of this.arena.fogGates) {
-        fg.curtainMat.uniforms.uTime.value = this.totalTime;
+      this.stepEnvironmentVisuals();
+      if (!this.started) {
+        this.cameraCtrl.yaw = Math.sin(this.totalTime * 0.14) * 0.45;
       }
       this.cameraCtrl.update(
         this.camera,
@@ -426,7 +472,12 @@ export class GameEngine {
       );
     }
 
-    this.renderer.render(this.scene, this.camera);
+    this.renderer.info.reset();
+    if (this.bloomEnabled) {
+      this.composer.render();
+    } else {
+      this.renderer.render(this.scene, this.camera);
+    }
   }
 
   private stepSimulation(realDt: number): void {
@@ -457,6 +508,13 @@ export class GameEngine {
     }
     if (this.input.buffer.consume('heal', nowSec) && tryUseHealFlask(this.player)) {
       this.audio.playHeal();
+      this.vfx.spawnBurst(
+        new THREE.Vector3(this.playerPos.x, 1.1, this.playerPos.z),
+        0xf2c864,
+        18,
+        4.2,
+        0.48,
+      );
       this.ui.showToast('CRIMSON FLASK RESTORED HP');
     }
 
@@ -477,24 +535,61 @@ export class GameEngine {
     if (this.input.buffer.consume('dodge', nowSec)) {
       if (tryStartDodge(this.player, { x: worldMoveX, z: worldMoveZ })) {
         this.audio.playDodge();
+        this.vfx.spawnBurst(
+          new THREE.Vector3(this.playerPos.x, 0.7, this.playerPos.z),
+          new THREE.Color(SIGIL_BY_ID[this.player.selectedSigil].accentHex).getHex(),
+          12,
+          4.5,
+          0.38,
+        );
       }
     }
 
     stepPlayerState(this.player, dt);
 
+    let isMoving = false;
     if (this.player.dodgeTimer > 0) {
       const dodgeSpeed = 13.5;
       this.playerPos.x += this.player.dodgeDirX * dodgeSpeed * dt;
       this.playerPos.z += this.player.dodgeDirZ * dodgeSpeed * dt;
-    } else if (Math.hypot(worldMoveX, worldMoveZ) > 0.05) {
-      const moveSpeed = 6.8;
-      this.playerPos.x += worldMoveX * moveSpeed * dt;
-      this.playerPos.z += worldMoveZ * moveSpeed * dt;
-      const targetYaw = Math.atan2(worldMoveX, worldMoveZ);
-      let diff = targetYaw - this.playerYaw;
-      while (diff > Math.PI) diff -= Math.PI * 2;
-      while (diff < -Math.PI) diff += Math.PI * 2;
-      this.playerYaw += diff * Math.min(1, 14 * dt);
+      this.playerRig.bodyMeshGroup.rotation.x = 0.52;
+      this.playerRig.bodyMeshGroup.position.y = -0.15;
+    } else {
+      this.playerRig.bodyMeshGroup.rotation.x = 0;
+      if (Math.hypot(worldMoveX, worldMoveZ) > 0.05) {
+        isMoving = true;
+        const moveSpeed = 6.8;
+        this.playerPos.x += worldMoveX * moveSpeed * dt;
+        this.playerPos.z += worldMoveZ * moveSpeed * dt;
+        const targetYaw = Math.atan2(worldMoveX, worldMoveZ);
+        let diff = targetYaw - this.playerYaw;
+        while (diff > Math.PI) diff -= Math.PI * 2;
+        while (diff < -Math.PI) diff += Math.PI * 2;
+        this.playerYaw += diff * Math.min(1, 14 * dt);
+      }
+    }
+
+    // Articulated walk / idle / cape animation
+    if (isMoving) {
+      this.walkCyclePhase += dt * 11.5;
+      const stride = Math.sin(this.walkCyclePhase);
+      this.playerRig.legLeft.rotation.x = stride * 0.62;
+      this.playerRig.legRight.rotation.x = -stride * 0.62;
+      this.playerRig.armLeft.rotation.x = -stride * 0.45;
+      if (this.bladeSwingTimer <= 0) {
+        this.playerRig.armRight.rotation.x = stride * 0.35;
+      }
+      this.playerRig.bodyMeshGroup.position.y = Math.abs(Math.cos(this.walkCyclePhase)) * 0.06;
+      this.playerRig.cloakPivot.rotation.x = 0.25 + Math.abs(stride) * 0.14;
+    } else if (this.player.dodgeTimer <= 0) {
+      this.playerRig.legLeft.rotation.x *= 0.82;
+      this.playerRig.legRight.rotation.x *= 0.82;
+      this.playerRig.armLeft.rotation.x *= 0.82;
+      if (this.bladeSwingTimer <= 0) {
+        this.playerRig.armRight.rotation.x = Math.sin(this.totalTime * 2.2) * 0.04;
+      }
+      this.playerRig.bodyMeshGroup.position.y = Math.sin(this.totalTime * 2.2) * 0.02;
+      this.playerRig.cloakPivot.rotation.x = 0.06 + Math.sin(this.totalTime * 2.8) * 0.05;
     }
 
     // Keep player inside sanctuary boundary
@@ -517,17 +612,23 @@ export class GameEngine {
     if (this.bladeSwingTimer > 0) {
       this.bladeSwingTimer = Math.max(0, this.bladeSwingTimer - dt);
       const swing = Math.sin((this.bladeSwingTimer / 0.25) * Math.PI);
-      this.playerRig.bladePivot.rotation.x = -swing * 1.45;
-      this.playerRig.firstPersonBlade.rotation.x = -swing * 0.85;
+      this.playerRig.armRight.rotation.x = -swing * 1.15;
+      this.playerRig.bladePivot.rotation.x = -swing * 1.25;
+      this.playerRig.firstPersonBlade.rotation.x = -swing * 0.78;
+      this.playerRig.firstPersonBlade.rotation.z = swing * 0.25;
     } else {
       this.playerRig.bladePivot.rotation.x = 0;
-      this.playerRig.firstPersonBlade.rotation.x = 0;
+      this.playerRig.firstPersonBlade.rotation.x = Math.sin(this.totalTime * 2.4) * 0.015;
+      this.playerRig.firstPersonBlade.rotation.z = 0;
     }
 
     this.playerRig.root.position.copy(this.playerPos);
     this.playerRig.root.rotation.y =
       this.cameraCtrl.pov === 'first' ? this.cameraCtrl.yaw + Math.PI : this.playerYaw;
-    this.playerRig.astrolabeRing.rotation.z += dt * 1.1;
+    this.playerRig.astrolabeRing.rotation.z += dt * 1.15;
+    this.playerRig.outerHaloRing.rotation.z -= dt * 0.72;
+    this.playerRig.fpAstrolabeRing.rotation.z += dt * 1.5;
+    this.playerRig.fpAstrolabeRing.rotation.y += dt * 0.8;
 
     // Step Boss & VFX
     let lockTarget: THREE.Vector3 | null = null;
@@ -550,21 +651,40 @@ export class GameEngine {
 
         this.bossRig.root.position.set(this.boss.x, this.boss.y, this.boss.z);
         this.bossRig.root.rotation.y = this.boss.facingYaw;
+        this.bossRig.bodyGroup.position.y = Math.sin(this.totalTime * 2.1) * 0.14;
+        this.bossRig.coreMesh.rotation.y += dt * 1.8;
         this.bossRig.wardMesh.visible = this.boss.wardActive;
         const slopeMag = Math.abs(
           evaluateExactDerivative(this.boss.activeFunction, this.boss.theta).value,
         );
         this.bossRig.wardMat.uniforms.uTime.value = this.totalTime;
-        this.bossRig.wardMat.uniforms.uPulse.value = Math.min(1.5, 0.35 + slopeMag * 0.22);
+        this.bossRig.wardMat.uniforms.uPulse.value = Math.min(1.65, 0.4 + slopeMag * 0.25);
 
+        const orbitSpeed = 1.5 + Math.min(3.5, slopeMag * 0.25);
         this.bossRig.orbitParts.forEach((p, idx) => {
-          const a = this.totalTime * 1.6 + (idx * Math.PI * 2) / this.bossRig!.orbitParts.length;
-          p.position.set(Math.cos(a) * 2.0, 2.0 + Math.sin(a * 2) * 0.3, Math.sin(a) * 2.0);
+          const a = this.totalTime * orbitSpeed + (idx * Math.PI * 2) / this.bossRig!.orbitParts.length;
+          p.position.set(Math.cos(a) * 2.15, 2.25 + Math.sin(a * 2) * 0.35, Math.sin(a) * 2.15);
+          p.rotation.y = -a;
         });
         if (this.bossRig.wingLeft && this.bossRig.wingRight) {
-          const flap = Math.sin(this.totalTime * 6.5) * 0.45;
+          const flap = Math.sin(this.totalTime * 5.8) * 0.42;
           this.bossRig.wingLeft.rotation.z = flap;
           this.bossRig.wingRight.rotation.z = -flap;
+        }
+        if (this.bossRig.tailSegments) {
+          this.bossRig.tailSegments.forEach((seg, idx) => {
+            seg.rotation.y = Math.sin(this.totalTime * 3.4 - idx * 0.55) * 0.18;
+          });
+        }
+        if (this.bossRig.neckSegments) {
+          this.bossRig.neckSegments.forEach((seg, idx) => {
+            seg.rotation.x = Math.sin(this.totalTime * 2.3 - idx * 0.4) * 0.08;
+          });
+        }
+        if (this.bossRig.veilRibbons) {
+          this.bossRig.veilRibbons.forEach((rib, idx) => {
+            rib.rotation.x = 0.18 + Math.sin(this.totalTime * 3.0 + idx) * 0.14;
+          });
         }
 
         const profile = PRESET_PROFILES[this.settings.preset];
@@ -582,6 +702,7 @@ export class GameEngine {
     }
 
     this.stepProjectilesAndShockwaves(dt);
+    this.vfx.step(dt);
     this.stepEnvironmentVisuals();
 
     this.cameraCtrl.update(
@@ -619,6 +740,10 @@ export class GameEngine {
     this.bladeSwingTimer = 0.25;
     this.audio.playSlash(this.player.comboStep);
 
+    const sigilHex = new THREE.Color(SIGIL_BY_ID[this.player.selectedSigil].accentHex).getHex();
+    const slashYaw = this.cameraCtrl.pov === 'first' ? this.cameraCtrl.yaw + Math.PI : this.playerYaw;
+    this.vfx.spawnSlashArc(this.playerPos, slashYaw, this.player.comboStep, sigilHex);
+
     if (!this.boss || this.boss.phase === 'DEFEATED') return;
     const dist = Math.hypot(this.boss.x - this.playerPos.x, this.boss.z - this.playerPos.z);
     if (dist > 4.8) return;
@@ -632,6 +757,13 @@ export class GameEngine {
     });
     this.lastWorkedExample = res.workedExample;
     applyDamageToBoss(this.boss, res.damage, res.staggerGain, false);
+    this.vfx.spawnBurst(
+      new THREE.Vector3(this.boss.x, this.boss.y + 1.6, this.boss.z),
+      0xf5d48a,
+      10,
+      5.2,
+      0.38,
+    );
     this.cameraCtrl.addTrauma(0.22);
     this.ui.showToast(`STRIKE: ${res.damage}`);
   }
@@ -689,25 +821,31 @@ export class GameEngine {
 
     this.lastWorkedExample = res.workedExample;
     applyDamageToBoss(boss, res.damage, res.staggerGain, res.wardShattered);
+    const hitOrigin = new THREE.Vector3(boss.x, boss.y + 1.8, boss.z);
+    const sigilHex = new THREE.Color(SIGIL_BY_ID[this.player.selectedSigil].accentHex).getHex();
 
     if (res.triggerBacklash) {
       this.audio.playBacklash();
       this.cameraCtrl.addTrauma(0.5);
+      this.vfx.spawnBurst(hitOrigin, 0xc9323c, 16, 6.2, 0.45);
       this.spawnShockwave(this.boss!.x, this.boss!.z, 9.0, 16, 0xc9323c);
       this.ui.showToast(`DERIVATIVE MISMATCH! BACKLASH (${res.damage})`);
     } else if (res.outcomeKind === 'critical_stagger') {
       this.audio.playWardShatter(true);
       this.cameraCtrl.addTrauma(0.85);
       this.hitStopRemaining = 0.1;
+      this.vfx.spawnBurst(hitOrigin, 0xffe49c, 28, 8.5, 0.58);
       this.ui.showToast(`CRITICAL TANGENT f′≈0! ${res.multiplier}× (${res.damage})`);
     } else if (res.wardShattered) {
       this.audio.playWardShatter(false);
       this.cameraCtrl.addTrauma(0.68);
       this.hitStopRemaining = 0.08;
+      this.vfx.spawnBurst(hitOrigin, sigilHex, 24, 7.6, 0.52);
       this.ui.showToast(`WARD SHATTERED! ${res.multiplier}× (${res.damage})`);
     } else {
       this.audio.playWardShatter(false);
       this.cameraCtrl.addTrauma(0.45);
+      this.vfx.spawnBurst(hitOrigin, sigilHex, 15, 6.0, 0.44);
       this.ui.showToast(`RESONANCE HIT! ${res.multiplier}× (${res.damage})`);
     }
   }
@@ -782,6 +920,10 @@ export class GameEngine {
       p.mesh.position.x += p.vx * dt;
       p.mesh.position.z += p.vz * dt;
       p.mesh.rotation.y += dt * 6;
+      if (Math.random() < 0.45) {
+        const col = (p.mesh.material as THREE.MeshBasicMaterial).color.getHex();
+        this.vfx.spawnTrail(p.mesh.position, col, p.fromPlayer ? 0.34 : 0.28);
+      }
 
       let remove = p.life <= 0;
       if (p.fromPlayer && this.boss && this.boss.phase !== 'DEFEATED') {
@@ -834,9 +976,14 @@ export class GameEngine {
   }
 
   private stepEnvironmentVisuals(): void {
+    this.arena.skyMat.uniforms.uTime.value = this.totalTime;
     for (const fg of this.arena.fogGates) {
       fg.curtainMat.uniforms.uTime.value = this.totalTime;
     }
+    this.arena.brazierFlames.forEach((flame, idx) => {
+      const flicker = 0.88 + Math.sin(this.totalTime * 11.5 + idx * 2.1) * 0.14;
+      flame.scale.set(flicker, 0.9 + Math.cos(this.totalTime * 14.0 + idx) * 0.18, flicker);
+    });
 
     const posAttr = this.arena.emberPoints.geometry.getAttribute('position') as THREE.BufferAttribute;
     const base = this.arena.emberBasePositions;
