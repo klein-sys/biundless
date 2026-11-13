@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { ARENA_RADIUS } from '../engine/ProceduralModels';
+import { getTerrainHeight, WORLD_PLAYABLE_RADIUS } from '../world/SunlitValley';
 
 export type CameraPOV = 'third' | 'first';
 
@@ -12,8 +12,8 @@ export class DualCameraController {
   private povBlend = 0; // 0 = 3rd person, 1 = 1st person
   private trauma = 0;
   private shakeClock = 0;
-  private readonly smoothedPos = new THREE.Vector3(0, 3.5, 10);
-  private readonly smoothedLook = new THREE.Vector3(0, 1.5, 0);
+  private readonly smoothedPos = new THREE.Vector3(0, 3.5, 16);
+  private readonly smoothedLook = new THREE.Vector3(0, 1.5, 4);
   private readonly shakeOffset = new THREE.Vector3();
 
   public togglePov(): CameraPOV {
@@ -25,10 +25,18 @@ export class DualCameraController {
     this.trauma = Math.min(1.0, this.trauma + amount);
   }
 
+  public resetSmoothing(playerPos: THREE.Vector3, yaw: number): void {
+    this.yaw = yaw;
+    const backX = Math.sin(yaw);
+    const backZ = Math.cos(yaw);
+    this.smoothedPos.set(playerPos.x + backX * 6.5, playerPos.y + 3.2, playerPos.z + backZ * 6.5);
+    this.smoothedLook.set(playerPos.x - backX * 4, playerPos.y + 1.5, playerPos.z - backZ * 4);
+  }
+
   public applyLookDelta(dx: number, dy: number, sensitivity: number): void {
     const scale = 0.0028 * sensitivity;
     this.yaw -= dx * scale;
-    const minPitch = this.pov === 'first' ? -1.3 : -0.45;
+    const minPitch = this.pov === 'first' ? -1.3 : -0.42;
     const maxPitch = this.pov === 'first' ? 1.3 : 1.05;
     this.pitch = Math.max(minPitch, Math.min(maxPitch, this.pitch + dy * scale));
   }
@@ -49,7 +57,6 @@ export class DualCameraController {
     realDt: number,
     shakeStrength: number,
   ): void {
-    // Softly steer yaw/pitch toward locked boss if lock-on is active
     if (this.lockedOn && lockTarget) {
       const toX = lockTarget.x - playerPos.x;
       const toZ = lockTarget.z - playerPos.z;
@@ -61,12 +68,10 @@ export class DualCameraController {
       this.yaw += diff * steer;
     }
 
-    // Smooth POV blend (0 <-> 1)
     const targetBlend = this.pov === 'first' ? 1 : 0;
     this.povBlend += (targetBlend - this.povBlend) * (1 - Math.exp(-14 * dt));
 
-    // Compute 3rd-person orbit camera target with arena boundary push-in
-    const orbitDist = 6.2;
+    const orbitDist = 6.5;
     const shoulderOffset = 0.72;
     const cosPitch = Math.cos(this.pitch);
     const sinPitch = Math.sin(this.pitch);
@@ -80,32 +85,38 @@ export class DualCameraController {
 
     const thirdPos = new THREE.Vector3(
       playerPos.x + backX * orbitDist + rightX * shoulderOffset,
-      Math.max(0.85, playerPos.y + 1.85 + backY * orbitDist),
+      playerPos.y + 1.9 + backY * orbitDist,
       playerPos.z + backZ * orbitDist + rightZ * shoulderOffset,
     );
 
-    // Arena wall collision clamp so camera stays inside the ruined sanctuary
+    // Soft open-world valley edge clamp
     const radialDist = Math.hypot(thirdPos.x, thirdPos.z);
-    const maxCamR = ARENA_RADIUS - 0.6;
+    const maxCamR = WORLD_PLAYABLE_RADIUS + 4;
     if (radialDist > maxCamR) {
       const s = maxCamR / radialDist;
       thirdPos.x *= s;
       thirdPos.z *= s;
     }
 
-    const thirdLook = lockTarget && this.lockedOn
-      ? new THREE.Vector3(
-          (playerPos.x + lockTarget.x) * 0.5,
-          1.65,
-          (playerPos.z + lockTarget.z) * 0.5,
-        )
-      : new THREE.Vector3(
-          playerPos.x - Math.sin(this.yaw) * 4.5 + rightX * 0.35,
-          playerPos.y + 1.45 - sinPitch * 2.2,
-          playerPos.z - Math.cos(this.yaw) * 4.5 + rightZ * 0.35,
-        );
+    // Never dip camera below rolling meadow terrain
+    const groundUnderCam = getTerrainHeight(thirdPos.x, thirdPos.z);
+    if (thirdPos.y < groundUnderCam + 0.85) {
+      thirdPos.y = groundUnderCam + 0.85;
+    }
 
-    // Compute 1st-person visor camera position & forward aim target
+    const thirdLook =
+      lockTarget && this.lockedOn
+        ? new THREE.Vector3(
+            (playerPos.x + lockTarget.x) * 0.5,
+            Math.max(playerPos.y + 1.5, (playerPos.y + lockTarget.y) * 0.5),
+            (playerPos.z + lockTarget.z) * 0.5,
+          )
+        : new THREE.Vector3(
+            playerPos.x - Math.sin(this.yaw) * 4.5 + rightX * 0.35,
+            playerPos.y + 1.48 - sinPitch * 2.2,
+            playerPos.z - Math.cos(this.yaw) * 4.5 + rightZ * 0.35,
+          );
+
     const firstPos = new THREE.Vector3(playerPos.x, playerPos.y + 1.66, playerPos.z);
     const firstLook = new THREE.Vector3(
       firstPos.x - Math.sin(this.yaw) * cosPitch * 10,
@@ -116,7 +127,6 @@ export class DualCameraController {
     const desiredPos = thirdPos.lerp(firstPos, this.povBlend);
     const desiredLook = thirdLook.lerp(firstLook, this.povBlend);
 
-    // Frame-rate-independent smoothing (faster in 1st person so aiming feels crisp)
     const rate = 12 + this.povBlend * 22;
     const alpha = 1 - Math.exp(-rate * dt);
     this.smoothedPos.lerp(desiredPos, alpha);
@@ -140,4 +150,3 @@ export class DualCameraController {
     camera.lookAt(this.smoothedLook);
   }
 }
-

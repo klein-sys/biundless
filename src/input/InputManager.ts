@@ -7,6 +7,7 @@ export interface InputCallbacks {
   onToggleDev: () => void;
   onTogglePause: () => void;
   onFirstUserGesture: () => void;
+  onPointerLockChange?: (locked: boolean) => void;
 }
 
 export class InputManager {
@@ -29,6 +30,7 @@ export class InputManager {
   private wheelKeyHeld = false;
   private readonly canvas: HTMLCanvasElement;
   private uiBlocked = false;
+  private pointerLockAllowed = true;
 
   constructor(canvas: HTMLCanvasElement, callbacks: InputCallbacks) {
     this.canvas = canvas;
@@ -39,6 +41,42 @@ export class InputManager {
     this.bindEvents();
   }
 
+  public setPointerLockAllowed(allowed: boolean): void {
+    this.pointerLockAllowed = allowed;
+    if (!allowed) {
+      this.exitPointerLock();
+    }
+  }
+
+  public isPointerLocked(): boolean {
+    return typeof document !== 'undefined' && document.pointerLockElement === this.canvas;
+  }
+
+  public exitPointerLock(): void {
+    if (typeof document !== 'undefined' && document.pointerLockElement === this.canvas) {
+      try {
+        document.exitPointerLock?.();
+      } catch {
+        // Ignore browser exitPointerLock errors
+      }
+    }
+  }
+
+  public requestPointerLockSafe(): void {
+    if (!this.pointerLockAllowed || this.uiBlocked || this.isTouchDevice) return;
+    if (this.isPointerLocked()) return;
+    try {
+      const maybePromise = this.canvas.requestPointerLock?.() as unknown as Promise<void> | undefined;
+      if (maybePromise && typeof maybePromise.catch === 'function') {
+        maybePromise.catch(() => {
+          // Pointer lock denied or unavailable; fallback drag remains harmless
+        });
+      }
+    } catch {
+      // Ignore pointer lock rejection
+    }
+  }
+
   public setUiBlocked(blocked: boolean): void {
     this.uiBlocked = blocked;
     if (blocked) {
@@ -46,7 +84,13 @@ export class InputManager {
       this.touchMoveX = 0;
       this.touchMoveY = 0;
       this.isDraggingMouse = false;
+      this.exitPointerLock();
     }
+  }
+
+  public isSprinting(): boolean {
+    if (this.uiBlocked) return false;
+    return this.keys.has('ShiftLeft') || this.keys.has('ShiftRight');
   }
 
   public setCurrentSigilIndex(index: number): void {
@@ -100,7 +144,7 @@ export class InputManager {
         this.callbacks.onToggleDev();
         return;
       }
-      if (e.code === 'Escape') {
+      if (e.code === 'Escape' || e.code === 'KeyM') {
         e.preventDefault();
         this.callbacks.onTogglePause();
         return;
@@ -110,7 +154,10 @@ export class InputManager {
       this.keys.add(e.code);
 
       if (!e.repeat) {
-        if (e.code === 'Space' || e.code === 'ShiftLeft' || e.code === 'ShiftRight') {
+        if (e.code === 'Space') {
+          e.preventDefault();
+          this.buffer.press('jump', this.nowSec());
+        } else if (e.code === 'ControlLeft' || e.code === 'ControlRight' || e.code === 'KeyC') {
           e.preventDefault();
           this.buffer.press('dodge', this.nowSec());
         } else if (e.code === 'KeyE') {
@@ -145,14 +192,37 @@ export class InputManager {
       }
     });
 
+    document.addEventListener('pointerlockchange', () => {
+      this.isDraggingMouse = false;
+      this.callbacks.onPointerLockChange?.(this.isPointerLocked());
+    });
+
     this.canvas.addEventListener('mousedown', (e) => {
       this.callbacks.onFirstUserGesture();
       if (this.uiBlocked) return;
+
+      if (this.isPointerLocked()) {
+        if (e.button === 0) {
+          this.buffer.press('attack', this.nowSec());
+        } else if (e.button === 2) {
+          this.buffer.press('castSigil', this.nowSec());
+        }
+        return;
+      }
+
+      // First click on unlocked desktop canvas acquires Pointer Lock cleanly without misfiring an attack
+      if (this.pointerLockAllowed && !this.isTouchDevice && e.button === 0) {
+        this.isDraggingMouse = true;
+        this.lastMouseX = e.clientX;
+        this.lastMouseY = e.clientY;
+        this.requestPointerLockSafe();
+        return;
+      }
+
       if (e.button === 0) {
         this.isDraggingMouse = true;
         this.lastMouseX = e.clientX;
         this.lastMouseY = e.clientY;
-        this.buffer.press('attack', this.nowSec());
       } else if (e.button === 2) {
         this.buffer.press('castSigil', this.nowSec());
       }
@@ -164,7 +234,7 @@ export class InputManager {
 
     window.addEventListener('mousemove', (e) => {
       if (this.uiBlocked) return;
-      if (document.pointerLockElement === this.canvas) {
+      if (this.isPointerLocked()) {
         this.lookDeltaX += e.movementX;
         this.lookDeltaY += e.movementY;
       } else if (this.isDraggingMouse) {
@@ -234,4 +304,3 @@ export class InputManager {
     this.canvas.addEventListener('touchcancel', endTouch, { passive: true });
   }
 }
-

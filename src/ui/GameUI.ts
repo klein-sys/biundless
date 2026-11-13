@@ -14,15 +14,14 @@ import type { GameAction } from '../input/inputMath';
 import {
   DERIVATIVE_SIGILS,
   evaluateExactDerivative,
-  evaluateNumericDerivative,
   evaluateTrig,
   formatThetaPi,
   isCriticalPoint,
   SIGIL_BY_ID,
-  TRIG_DEFINITIONS,
   type DerivativeSigilId,
   type WorkedExampleSnapshot,
 } from '../math/trigDerivatives';
+import type { BiomeLandmark } from '../world/SunlitValley';
 
 export interface TelemetrySnapshot {
   fps: number;
@@ -52,35 +51,50 @@ export interface UIHandlers {
   onCloseSettings: () => void;
 }
 
+const SIGIL_SVG_PATHS: Record<DerivativeSigilId, string> = {
+  cos: 'M4 7 C10 7, 12 21, 16 21 C20 21, 22 7, 28 7',
+  neg_sin: 'M4 14 C8 21, 12 21, 16 14 C20 7, 24 7, 28 14',
+  sec2: 'M6 7 C12 23, 20 23, 26 7',
+  neg_csc2: 'M6 21 C12 5, 20 5, 26 21',
+  sec_tan: 'M5 23 C14 21, 18 11, 27 5',
+  neg_csc_cot: 'M5 5 C14 7, 18 17, 27 23',
+};
+
 export class GameUI {
   private readonly root: HTMLElement;
   private readonly handlers: UIHandlers;
 
   private titleOverlay!: HTMLElement;
   private settingsModal!: HTMLElement;
-  private devDrawer!: HTMLElement;
   private workedModal!: HTMLElement;
   private radialWheel!: HTMLElement;
   private mobileControls!: HTMLElement;
   private fpReticle!: HTMLElement;
-  private interactBanner!: HTMLElement;
+  private regionBanner!: HTMLElement;
   private combatToast!: HTMLElement;
+  private pointerHint!: HTMLElement;
 
   private hpFill!: HTMLElement;
   private staminaFill!: HTMLElement;
-  private vitalsText!: HTMLElement;
+  private vitalsHpNum!: HTMLElement;
+  private flaskPill!: HTMLElement;
   private povBtn!: HTMLElement;
+  private menuBtn!: HTMLElement;
   private fpsBadge!: HTMLElement;
+
   private bossHud!: HTMLElement;
   private bossNameEl!: HTMLElement;
-  private bossPhaseEl!: HTMLElement;
+  private bossStatusEl!: HTMLElement;
   private bossHpFill!: HTMLElement;
   private bossStaggerFill!: HTMLElement;
-  private mathPlaque!: HTMLElement;
-  private sigilButtons = new Map<DerivativeSigilId, HTMLElement>();
-  private telemetryEl!: HTMLElement;
+  private equationRibbon!: HTMLElement;
+
+  private activeSigilPill!: HTMLElement;
+  private sigilPipButtons = new Map<DerivativeSigilId, HTMLElement>();
+
   private toastTimeout: number | null = null;
-  private devOpen = false;
+  private currentRegionId: string | null = null;
+  private regionFadeTimeout: number | null = null;
 
   constructor(root: HTMLElement, handlers: UIHandlers) {
     this.root = root;
@@ -90,80 +104,117 @@ export class GameUI {
 
   private renderShell(): void {
     this.root.innerHTML = `
-      <div class="hud-top">
-        <div class="fantasy-panel player-vitals">
-          <div class="vitals-header">
-            <span>ASTRAL KNIGHT</span>
-            <span id="flask-count">FLASKS: 3</span>
+      <!-- Top Left: Minimal Sleek Vitals & Flask Badge -->
+      <div class="hud-top-left interactive">
+        <div class="vitals-pod">
+          <div class="vitals-row">
+            <span class="hero-name">SPELLBLADE</span>
+            <span id="hp-num" class="vitals-num">160/160</span>
           </div>
-          <div class="bar-track"><div id="hp-fill" class="bar-fill-hp" style="width:100%"></div></div>
-          <div class="bar-track sm"><div id="stamina-fill" class="bar-fill-stamina" style="width:100%"></div></div>
-          <div id="vitals-text" class="vitals-meta"><span>HP 160/160</span><span>SIGIL: cos θ</span></div>
-        </div>
-
-        <div class="top-right-controls interactive">
-          <div id="fps-badge" class="fantasy-panel fps-badge">60 FPS</div>
-          <button id="btn-pov" class="fantasy-btn icon-btn" title="Toggle 3rd/1st POV (V)">POV: 3RD</button>
-          <button id="btn-boss-menu" class="fantasy-btn icon-btn" title="Quick Boss Select">BOSSES</button>
-          <button id="btn-settings" class="fantasy-btn icon-btn" title="Graphics & FPS (Esc)">SETTINGS</button>
-          <button id="btn-dev" class="fantasy-btn icon-btn" title="Dev & MATH 101 Demo (F9)">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="12" cy="12" r="3"/><path d="M12 2v3m0 14v3M4.9 4.9l2.1 2.1m10 10 2.1 2.1M2 12h3m14 0h3M4.9 19.1 7 17m10-10 2.1-2.1"/>
+          <div class="bar-pill hp-track"><div id="hp-fill" class="bar-fill hp" style="width:100%"></div></div>
+          <div class="bar-pill stam-track"><div id="stamina-fill" class="bar-fill stam" style="width:100%"></div></div>
+          <button id="flask-pill" class="flask-pill" title="Heal Flask (R)">
+            <svg class="flask-icon" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M9 2h6v2h-1v2.2l4.8 8.8c.8 1.5-.3 3.3-2 3.3H7.2c-1.7 0-2.8-1.8-2-3.3L10 6.2V4H9V2z"/>
             </svg>
-            DEV
+            <span id="flask-label">3</span>
           </button>
         </div>
       </div>
 
-      <div class="center-overlay">
+      <!-- Top Center: Subtle Transient Region Banner -->
+      <div id="region-banner" class="region-banner">
+        <span class="region-crown">✧ SUNLIT VALLEY ✧</span>
+        <span id="region-title" class="region-title">Adventurer's Plaza</span>
+        <span id="region-sub" class="region-sub">Waypoint Shrine</span>
+      </div>
+
+      <!-- Top Right: Exactly 2 Clean Icon Buttons + Optional FPS -->
+      <div class="hud-top-right interactive">
+        <div id="fps-badge" class="fps-pill hidden">60 FPS</div>
+        <button id="btn-pov" class="circle-btn" title="Toggle 3rd / 1st POV (V)">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"/><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+          </svg>
+          <span class="btn-subtext">3RD</span>
+        </button>
+        <button id="btn-menu" class="circle-btn" title="Menu & Settings (Esc / M)">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M4 6h16M4 12h16M4 18h16"/>
+          </svg>
+          <span class="btn-subtext">MENU</span>
+        </button>
+      </div>
+
+      <!-- Center Screen: Reticle & Transient Toast -->
+      <div class="center-crosshair">
         <svg id="fp-reticle" class="fp-reticle hidden" viewBox="0 0 64 64">
-          <circle cx="32" cy="32" r="18" fill="none" stroke="#c8a464" stroke-width="1.2" stroke-dasharray="4 3"/>
-          <circle cx="32" cy="32" r="2.2" fill="#ece3ce"/>
-          <line x1="8" y1="32" x2="22" y2="32" stroke="#c8a464" stroke-width="1.2"/>
-          <line x1="42" y1="32" x2="56" y2="32" stroke="#c8a464" stroke-width="1.2"/>
-          <line x1="32" y1="8" x2="32" y2="22" stroke="#c8a464" stroke-width="1.2"/>
-          <line x1="32" y1="42" x2="32" y2="56" stroke="#c8a464" stroke-width="1.2"/>
+          <circle cx="32" cy="32" r="16" fill="none" stroke="#d5b868" stroke-width="1.4" stroke-dasharray="4 3"/>
+          <circle cx="32" cy="32" r="2.2" fill="#fff7e0"/>
+          <line x1="12" y1="32" x2="22" y2="32" stroke="#d5b868" stroke-width="1.4"/>
+          <line x1="42" y1="32" x2="52" y2="32" stroke="#d5b868" stroke-width="1.4"/>
+          <line x1="32" y1="12" x2="32" y2="22" stroke="#d5b868" stroke-width="1.4"/>
+          <line x1="32" y1="42" x2="32" y2="52" stroke="#d5b868" stroke-width="1.4"/>
         </svg>
       </div>
 
-      <div id="interact-banner" class="fantasy-panel interact-banner hidden"></div>
-      <div id="combat-toast" class="fantasy-panel combat-toast"></div>
+      <div id="combat-toast" class="combat-toast"></div>
+      <div id="pointer-hint" class="pointer-hint hidden">Click world to look · Esc for Menu</div>
 
-      <div class="hud-bottom">
-        <div id="boss-hud" class="fantasy-panel boss-hud-wrap hidden">
-          <div class="boss-title-row">
-            <span id="boss-name" class="boss-name"></span>
-            <span id="boss-phase" class="boss-phase-tag"></span>
-          </div>
-          <div class="boss-hp-track"><div id="boss-hp-fill" class="boss-hp-fill" style="width:100%"></div></div>
-          <div class="boss-stagger-track"><div id="boss-stagger-fill" class="boss-stagger-fill" style="width:0%"></div></div>
-          <div id="math-plaque" class="math-plaque"></div>
+      <!-- Boss Encounter: Slender Centered Boss HP Bar + Single-Line Math Ribbon -->
+      <div id="boss-hud" class="boss-hud hidden">
+        <div class="boss-top-row">
+          <span id="boss-name" class="boss-name-label">Vespera, Astral Sylvan Witch</span>
+          <span id="boss-status" class="boss-status-label">Phase Ward</span>
         </div>
-
-        <div id="sigil-bar" class="fantasy-panel sigil-bar interactive"></div>
+        <div class="boss-bar-shell">
+          <div id="boss-hp-fill" class="boss-bar-fill" style="width:100%"></div>
+          <div id="boss-stagger-fill" class="boss-stagger-fill" style="width:0%"></div>
+        </div>
+        <div id="equation-ribbon" class="equation-ribbon"></div>
       </div>
 
+      <!-- Bottom Right: Compact Active Derivative Medallion & Streamlined 6-Pip Selector -->
+      <div class="hud-bottom-right interactive">
+        <div class="derivative-dock">
+          <button id="active-medallion" class="active-medallion" title="Derivative Attunement Wheel (Q / Click)">
+            <svg id="medallion-svg" class="medallion-curve" viewBox="0 0 32 28">
+              <path d="${SIGIL_SVG_PATHS.cos}" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/>
+            </svg>
+            <div class="medallion-meta">
+              <span id="medallion-label" class="medallion-label">cos θ</span>
+              <span class="medallion-hint">d/dθ</span>
+            </div>
+          </button>
+          <div id="sigil-pips" class="sigil-pips-row"></div>
+        </div>
+      </div>
+
+      <!-- Mobile Touch Controls: Ergonomic Layout -->
       <div id="mobile-controls" class="mobile-controls hidden">
         <div id="touch-stick" class="touch-joystick-zone"><div id="touch-knob" class="touch-joystick-knob"></div></div>
         <div class="touch-actions">
-          <button id="m-wheel" class="touch-btn">SIGILS</button>
-          <button id="m-lock" class="touch-btn">LOCK</button>
-          <button id="m-pov" class="touch-btn">POV</button>
-          <button id="m-heal" class="touch-btn">HEAL</button>
-          <button id="m-dodge" class="touch-btn">DODGE</button>
-          <button id="m-cast" class="touch-btn primary">CAST</button>
-          <button id="m-interact" class="touch-btn">GATE</button>
-          <button id="m-attack" class="touch-btn primary" style="grid-column: span 2; width: 120px; border-radius: 28px;">STRIKE</button>
+          <button id="m-wheel" class="touch-btn" aria-label="Derivative Wheel">SIGIL</button>
+          <button id="m-lock" class="touch-btn" aria-label="Lock target">LOCK</button>
+          <button id="m-heal" class="touch-btn" aria-label="Heal">HEAL</button>
+          <button id="m-jump" class="touch-btn" aria-label="Jump">JUMP</button>
+          <button id="m-dodge" class="touch-btn" aria-label="Dash">DASH</button>
+          <button id="m-cast" class="touch-btn cast" aria-label="Cast Resonance">CAST</button>
+          <button id="m-attack" class="touch-btn strike" aria-label="Basic Strike">STRIKE</button>
         </div>
       </div>
 
+      <!-- Slow-Mo Radial Wheel -->
       <div id="radial-wheel" class="radial-wheel-backdrop hidden">
         <div id="radial-wheel-inner" class="radial-wheel">
-          <div class="radial-center">DERIVATIVE<br/>ATTUNEMENT<br/><small style="color:#a69c86">0.2x Slow-Mo</small></div>
+          <div class="radial-center">
+            <span class="radial-title">ATTUNE</span>
+            <span class="radial-sub">0.2× Slow-Mo</span>
+          </div>
         </div>
       </div>
 
-      <div id="dev-drawer" class="fantasy-panel dev-drawer hidden"></div>
+      <!-- Modals: Settings/Menu, Worked Example, Title -->
       <div id="settings-modal" class="modal-backdrop hidden"></div>
       <div id="worked-modal" class="modal-backdrop hidden"></div>
       <div id="title-overlay" class="modal-backdrop"></div>
@@ -171,62 +222,75 @@ export class GameUI {
 
     this.hpFill = this.root.querySelector('#hp-fill')!;
     this.staminaFill = this.root.querySelector('#stamina-fill')!;
-    this.vitalsText = this.root.querySelector('#vitals-text')!;
+    this.vitalsHpNum = this.root.querySelector('#hp-num')!;
+    this.flaskPill = this.root.querySelector('#flask-pill')!;
     this.povBtn = this.root.querySelector('#btn-pov')!;
+    this.menuBtn = this.root.querySelector('#btn-menu')!;
     this.fpsBadge = this.root.querySelector('#fps-badge')!;
+
+    this.regionBanner = this.root.querySelector('#region-banner')!;
+    this.combatToast = this.root.querySelector('#combat-toast')!;
+    this.pointerHint = this.root.querySelector('#pointer-hint')!;
+    this.fpReticle = this.root.querySelector('#fp-reticle')!;
+
     this.bossHud = this.root.querySelector('#boss-hud')!;
     this.bossNameEl = this.root.querySelector('#boss-name')!;
-    this.bossPhaseEl = this.root.querySelector('#boss-phase')!;
+    this.bossStatusEl = this.root.querySelector('#boss-status')!;
     this.bossHpFill = this.root.querySelector('#boss-hp-fill')!;
     this.bossStaggerFill = this.root.querySelector('#boss-stagger-fill')!;
-    this.mathPlaque = this.root.querySelector('#math-plaque')!;
-    this.fpReticle = this.root.querySelector('#fp-reticle')!;
-    this.interactBanner = this.root.querySelector('#interact-banner')!;
-    this.combatToast = this.root.querySelector('#combat-toast')!;
+    this.equationRibbon = this.root.querySelector('#equation-ribbon')!;
+
+    this.activeSigilPill = this.root.querySelector('#active-medallion')!;
     this.mobileControls = this.root.querySelector('#mobile-controls')!;
     this.radialWheel = this.root.querySelector('#radial-wheel')!;
-    this.devDrawer = this.root.querySelector('#dev-drawer')!;
     this.settingsModal = this.root.querySelector('#settings-modal')!;
     this.workedModal = this.root.querySelector('#worked-modal')!;
     this.titleOverlay = this.root.querySelector('#title-overlay')!;
 
-    this.buildSigilBar();
+    this.buildSigilPips();
     this.buildRadialWheel();
     this.buildTitleOverlay();
-    this.bindTopButtons();
+    this.bindTopControls();
     this.bindMobileControls();
   }
 
-  private buildSigilBar(): void {
-    const bar = this.root.querySelector('#sigil-bar')!;
+  private buildSigilPips(): void {
+    const row = this.root.querySelector('#sigil-pips')!;
     DERIVATIVE_SIGILS.forEach((sigil, idx) => {
-      const btn = document.createElement('button');
-      btn.className = 'sigil-slot';
-      btn.title = `${sigil.label} — ${sigil.hint} (Key ${idx + 1})`;
-      btn.innerHTML = `
-        <span class="sigil-key">${idx + 1}</span>
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="${sigil.accentHex}" stroke-width="1.8">
-          <path d="M3 16 C7 4, 11 4, 12 12 C13 20, 17 20, 21 8"/>
+      const pip = document.createElement('button');
+      pip.className = 'sigil-pip';
+      pip.title = `${sigil.label} — ${sigil.hint} (Key ${idx + 1})`;
+      pip.innerHTML = `
+        <span class="pip-key">${idx + 1}</span>
+        <svg class="pip-curve" viewBox="0 0 32 28">
+          <path d="${SIGIL_SVG_PATHS[sigil.id]}" fill="none" stroke="${sigil.accentHex}" stroke-width="2.4" stroke-linecap="round"/>
         </svg>
-        <span class="sigil-formula">${sigil.label}</span>
-        <span class="sigil-hint">d/dθ(${sigil.sourceFunction})</span>
+        <span class="pip-name">${sigil.label}</span>
       `;
-      btn.addEventListener('click', () => this.handlers.onSelectSigil(sigil.id));
-      bar.appendChild(btn);
-      this.sigilButtons.set(sigil.id, btn);
+      pip.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.handlers.onSelectSigil(sigil.id);
+      });
+      row.appendChild(pip);
+      this.sigilPipButtons.set(sigil.id, pip);
     });
   }
 
   private buildRadialWheel(): void {
     const inner = this.root.querySelector('#radial-wheel-inner')!;
-    const r = 108;
+    const r = 110;
     DERIVATIVE_SIGILS.forEach((sigil, idx) => {
       const angle = (idx / DERIVATIVE_SIGILS.length) * Math.PI * 2 - Math.PI / 2;
       const node = document.createElement('button');
-      node.className = 'fantasy-panel fantasy-btn radial-node';
+      node.className = 'radial-node';
       node.style.left = `${155 + Math.cos(angle) * r}px`;
       node.style.top = `${155 + Math.sin(angle) * r}px`;
-      node.innerHTML = `<span style="color:${sigil.accentHex};font-family:var(--font-mono)">${sigil.label}</span><small style="font-size:9px;color:var(--parchment-muted)">d(${sigil.sourceFunction})</small>`;
+      node.innerHTML = `
+        <svg class="radial-svg" viewBox="0 0 32 28">
+          <path d="${SIGIL_SVG_PATHS[sigil.id]}" fill="none" stroke="${sigil.accentHex}" stroke-width="2.4" stroke-linecap="round"/>
+        </svg>
+        <span style="color:${sigil.accentHex}">${sigil.label}</span>
+      `;
       node.addEventListener('click', (e) => {
         e.stopPropagation();
         this.handlers.onSelectSigil(sigil.id);
@@ -240,22 +304,27 @@ export class GameUI {
 
   private buildTitleOverlay(): void {
     this.titleOverlay.innerHTML = `
-      <div class="fantasy-panel modal-card">
-        <h1 class="modal-title">ASHEN TANGENT</h1>
-        <p class="modal-subtitle">Chronicles of the Derivative — MATH 101 Differential Calculus RPG</p>
-        <p style="font-size:15px;line-height:1.45;color:var(--parchment);margin-bottom:14px;">
-          Bosses channel live trigonometric waves <strong>f(θ)</strong>. Attune your Resonance Blade to the matching
-          instantaneous derivative <strong>f′(θ)</strong> to shatter Phase Wards and trigger Critical Stagger.
+      <div class="adventure-modal title-card">
+        <div class="title-crest">✧ SUNLIT CHRONICLES ✧</div>
+        <h1 class="title-main">ASHEN TANGENT</h1>
+        <p class="title-sub">MATH 101 Differential Calculus Open-World Adventure RPG</p>
+        <p class="title-desc">
+          Explore the vibrant rolling Sunlit Valley. Bosses channel live trigonometric functions <strong>f(θ)</strong>.
+          Attune your blade to their instantaneous derivative <strong>f′(θ)</strong> to break crystalline Phase Wards
+          and trigger devastating Critical Staggers.
         </p>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px;color:var(--parchment-muted);margin-bottom:16px;">
-          <div><strong style="color:var(--brass)">Desktop:</strong> WASD Move · Mouse Look · LMB Strike · RMB/E Cast Sigil · 1–6 / Q Wheel · V POV · Tab Lock · Space Dodge</div>
-          <div><strong style="color:var(--brass)">Mobile:</strong> Left Stick Move · Right Drag Look · Thumb Action Buttons · Sigils Slow-Mo Wheel</div>
+        <div class="controls-cheat">
+          <div><strong>Desktop:</strong> WASD Move · Shift Sprint · Space Jump · Ctrl/C Dash · LMB Strike · RMB/E Cast Sigil · 1–6 / Q Wheel · V POV</div>
+          <div><strong>Mobile:</strong> Smooth Left Stick · Right Drag Camera · Responsive Strike / Cast / Jump / Dash buttons</div>
         </div>
-        <div class="btn-group" style="justify-content:center;">
-          <button id="start-hub-btn" class="fantasy-btn active" style="padding:11px 22px;font-size:13px;">Enter Ruined Sanctuary</button>
-          <button id="start-witch-btn" class="fantasy-btn">Witch (sin/cos)</button>
-          <button id="start-lich-btn" class="fantasy-btn">Lich (tan/cot)</button>
-          <button id="start-dragon-btn" class="fantasy-btn">Dragon (sec/csc)</button>
+        <div class="title-actions">
+          <button id="start-hub-btn" class="adv-btn primary">Enter Sunlit Valley</button>
+          <div class="title-quick-warps">
+            <span class="warp-label">Quick Waypoint:</span>
+            <button id="start-witch-btn" class="adv-btn sm">Whispering Glade (sin/cos)</button>
+            <button id="start-lich-btn" class="adv-btn sm">Sunken Sun-Ruins (tan/cot)</button>
+            <button id="start-dragon-btn" class="adv-btn sm">Skyridge Peak (sec/csc)</button>
+          </div>
         </div>
       </div>
     `;
@@ -273,10 +342,9 @@ export class GameUI {
     }
   }
 
-  private bindTopButtons(): void {
+  private bindTopControls(): void {
     this.povBtn.addEventListener('click', () => this.handlers.onTogglePov());
-    this.root.querySelector('#btn-dev')!.addEventListener('click', () => this.toggleDevDrawer());
-    this.root.querySelector('#btn-settings')!.addEventListener('click', () => {
+    this.menuBtn.addEventListener('click', () => {
       if (this.settingsModal.classList.contains('hidden')) {
         this.handlers.onOpenSettings();
       } else {
@@ -284,8 +352,13 @@ export class GameUI {
         this.handlers.onCloseSettings();
       }
     });
-    this.root.querySelector('#btn-boss-menu')!.addEventListener('click', () => {
-      this.titleOverlay.classList.toggle('hidden');
+
+    this.flaskPill.addEventListener('click', () => {
+      this.handlers.onTouchAction('heal');
+    });
+
+    this.activeSigilPill.addEventListener('click', () => {
+      this.handlers.onOpenWheel();
     });
   }
 
@@ -293,7 +366,7 @@ export class GameUI {
     const stick = this.root.querySelector('#touch-stick') as HTMLElement;
     const knob = this.root.querySelector('#touch-knob') as HTMLElement;
     let stickTouchId: number | null = null;
-    const maxRadius = 46;
+    const maxRadius = 48;
 
     const updateKnob = (clientX: number, clientY: number) => {
       const rect = stick.getBoundingClientRect();
@@ -346,10 +419,9 @@ export class GameUI {
     mapBtn('#m-attack', () => this.handlers.onTouchAction('attack'));
     mapBtn('#m-cast', () => this.handlers.onTouchAction('castSigil'));
     mapBtn('#m-dodge', () => this.handlers.onTouchAction('dodge'));
+    mapBtn('#m-jump', () => this.handlers.onTouchAction('jump'));
     mapBtn('#m-heal', () => this.handlers.onTouchAction('heal'));
-    mapBtn('#m-pov', () => this.handlers.onTogglePov());
     mapBtn('#m-lock', () => this.handlers.onToggleLockOn());
-    mapBtn('#m-interact', () => this.handlers.onTouchAction('interact'));
     mapBtn('#m-wheel', () => this.handlers.onOpenWheel());
   }
 
@@ -357,18 +429,12 @@ export class GameUI {
     this.mobileControls.classList.toggle('hidden', !visible);
   }
 
+  public setPointerHintVisible(visible: boolean): void {
+    this.pointerHint.classList.toggle('hidden', !visible);
+  }
+
   public setRadialWheelVisible(visible: boolean): void {
     this.radialWheel.classList.toggle('hidden', !visible);
-  }
-
-  public toggleDevDrawer(): boolean {
-    this.devOpen = !this.devOpen;
-    this.devDrawer.classList.toggle('hidden', !this.devOpen);
-    return this.devOpen;
-  }
-
-  public closeSettingsModal(): void {
-    this.settingsModal.classList.add('hidden');
   }
 
   public isModalOpen(): boolean {
@@ -379,81 +445,205 @@ export class GameUI {
     );
   }
 
+  public closeSettingsModal(): void {
+    this.settingsModal.classList.add('hidden');
+  }
+
   public showToast(msg: string): void {
     this.combatToast.textContent = msg;
     this.combatToast.classList.add('visible');
     if (this.toastTimeout !== null) window.clearTimeout(this.toastTimeout);
     this.toastTimeout = window.setTimeout(() => {
       this.combatToast.classList.remove('visible');
-    }, 1900);
+    }, 1850);
   }
 
-  public openSettingsModal(settings: GameSettings): void {
+  public updateRegion(landmark: BiomeLandmark | null, bossEngaged: boolean = false): void {
+    if (bossEngaged) {
+      this.regionBanner.classList.remove('visible');
+      if (this.regionFadeTimeout !== null) {
+        window.clearTimeout(this.regionFadeTimeout);
+        this.regionFadeTimeout = null;
+      }
+      return;
+    }
+    const id = landmark ? landmark.id : null;
+    if (id === this.currentRegionId) return;
+    this.currentRegionId = id;
+
+    if (!landmark) {
+      this.regionBanner.classList.remove('visible');
+      return;
+    }
+
+    const titleEl = this.regionBanner.querySelector('#region-title') as HTMLElement;
+    const subEl = this.regionBanner.querySelector('#region-sub') as HTMLElement;
+    titleEl.textContent = landmark.name;
+    subEl.textContent = landmark.subtitle;
+    this.regionBanner.classList.add('visible');
+
+    if (this.regionFadeTimeout !== null) window.clearTimeout(this.regionFadeTimeout);
+    this.regionFadeTimeout = window.setTimeout(() => {
+      this.regionBanner.classList.remove('visible');
+    }, 4200);
+  }
+
+  public openSettingsModal(
+    settings: GameSettings,
+    player?: PlayerState,
+    boss?: BossRuntime | null,
+    freezeTheta?: boolean,
+    telemetry?: TelemetrySnapshot,
+    initialTab: 'gameplay' | 'dev' = 'gameplay',
+  ): void {
     this.settingsModal.classList.remove('hidden');
     const presets: GraphicsPreset[] = ['low', 'medium', 'high', 'ultra'];
     const fpsCaps: FpsCap[] = [30, 60, 120, 0];
     const controls: ControlSchemeMode[] = ['auto', 'desktop', 'mobile'];
+    const isDev = initialTab === 'dev';
 
     this.settingsModal.innerHTML = `
-      <div class="fantasy-panel modal-card">
-        <h2 class="modal-title" style="font-size:18px;">SANCTUARY SETTINGS</h2>
-        <div class="form-row">
-          <span>Graphics Quality</span>
-          <div class="btn-group">
-            ${presets
-              .map(
-                (p) =>
-                  `<button data-preset="${p}" class="fantasy-btn ${settings.preset === p ? 'active' : ''}">${PRESET_PROFILES[p].label}</button>`,
-              )
-              .join('')}
+      <div class="adventure-modal settings-card">
+        <div class="modal-tabs">
+          <button id="tab-gameplay" class="tab-btn ${!isDev ? 'active' : ''}">SANCTUARY SETTINGS</button>
+          <button id="tab-dev" class="tab-btn ${isDev ? 'active' : ''}">DEV & MATH 101 DEMO</button>
+        </div>
+
+        <div id="tab-body-gameplay" class="tab-body ${isDev ? 'hidden' : ''}">
+          <div class="settings-group">
+            <label class="setting-label">Waypoint Quick-Travel</label>
+            <div class="btn-grid-4">
+              <button data-warp="hub" class="adv-btn sm">Adventurer's Plaza</button>
+              <button data-warp="witch" class="adv-btn sm">Whispering Glade</button>
+              <button data-warp="lich" class="adv-btn sm">Sunken Sun-Ruins</button>
+              <button data-warp="dragon" class="adv-btn sm">Skyridge Peak</button>
+            </div>
+          </div>
+
+          <div class="setting-row">
+            <span class="setting-title">Graphics Preset</span>
+            <div class="pill-group">
+              ${presets
+                .map(
+                  (p) =>
+                    `<button data-preset="${p}" class="pill-btn ${settings.preset === p ? 'active' : ''}">${PRESET_PROFILES[p].label}</button>`,
+                )
+                .join('')}
+            </div>
+          </div>
+
+          <div class="setting-row">
+            <span class="setting-title">Target Frame Rate</span>
+            <div class="pill-group">
+              ${fpsCaps
+                .map(
+                  (f) =>
+                    `<button data-fps="${f}" class="pill-btn ${settings.fpsCap === f ? 'active' : ''}">${f === 0 ? 'Max' : `${f}`}</button>`,
+                )
+                .join('')}
+            </div>
+          </div>
+
+          <div class="setting-row">
+            <span class="setting-title">Controls Mode</span>
+            <div class="pill-group">
+              ${controls
+                .map(
+                  (c) =>
+                    `<button data-ctrl="${c}" class="pill-btn ${settings.controlMode === c ? 'active' : ''}">${c.toUpperCase()}</button>`,
+                )
+                .join('')}
+            </div>
+          </div>
+
+          <div class="setting-row">
+            <span class="setting-title">Show FPS Overlay</span>
+            <button id="opt-fps" class="pill-btn ${settings.showFps ? 'active' : ''}">${settings.showFps ? 'SHOWN' : 'HIDDEN'}</button>
+          </div>
+
+          <div class="setting-row">
+            <span class="setting-title">Procedural Audio</span>
+            <button id="opt-audio" class="pill-btn ${settings.audioEnabled ? 'active' : ''}">${settings.audioEnabled ? 'ON' : 'MUTED'}</button>
+          </div>
+
+          <div class="setting-row">
+            <span class="setting-title">Camera Sensitivity (${settings.sensitivity.toFixed(1)}×)</span>
+            <input id="opt-sens" type="range" min="0.4" max="2.2" step="0.1" value="${settings.sensitivity}" class="adv-slider" />
           </div>
         </div>
-        <div class="form-row">
-          <span>Target Frame Rate</span>
-          <div class="btn-group">
-            ${fpsCaps
-              .map(
-                (f) =>
-                  `<button data-fps="${f}" class="fantasy-btn ${settings.fpsCap === f ? 'active' : ''}">${f === 0 ? 'Unlimited' : `${f} FPS`}</button>`,
-              )
-              .join('')}
+
+        <div id="tab-body-dev" class="tab-body ${isDev ? '' : 'hidden'}">
+          <div class="settings-group">
+            <label class="setting-label">Class Presentation Overlay</label>
+            <button id="dev-worked" class="adv-btn primary" style="width:100%;">Open MATH 101 Worked Example</button>
           </div>
-        </div>
-        <div class="form-row">
-          <span>Control Layout</span>
-          <div class="btn-group">
-            ${controls
-              .map(
-                (c) =>
-                  `<button data-ctrl="${c}" class="fantasy-btn ${settings.controlMode === c ? 'active' : ''}">${c.toUpperCase()}</button>`,
-              )
-              .join('')}
+
+          <div class="settings-group">
+            <label class="setting-label">Live Calculus Toggles</label>
+            <div class="btn-grid-4">
+              <button id="dev-god" class="adv-btn sm ${player?.godMode ? 'active' : ''}">God Mode</button>
+              <button id="dev-stam" class="adv-btn sm ${player?.infiniteStamina ? 'active' : ''}">Inf Stamina</button>
+              <button id="dev-freeze" class="adv-btn sm ${freezeTheta ? 'active' : ''}">Freeze θ</button>
+              <button id="dev-stagger" class="adv-btn sm">Stagger Boss</button>
+            </div>
           </div>
+
+          ${
+            telemetry
+              ? `
+            <div class="telemetry-box">
+              <div>FPS: ${telemetry.fps.toFixed(0)}</div>
+              <div>Frame: ${telemetry.frameMs.toFixed(1)}ms</div>
+              <div>Draw Calls: ${telemetry.drawCalls}</div>
+              <div>Triangles: ${telemetry.triangles}</div>
+              <div>Boss: ${boss ? boss.id : 'none'}</div>
+              <div>θ: ${boss ? formatThetaPi(boss.theta) : '0'}</div>
+            </div>
+          `
+              : ''
+          }
         </div>
-        <div class="form-row">
-          <span>FPS Counter</span>
-          <button id="opt-show-fps" class="fantasy-btn ${settings.showFps ? 'active' : ''}">${settings.showFps ? 'SHOWN' : 'HIDDEN'}</button>
-        </div>
-        <div class="form-row">
-          <span>Web Audio Synth</span>
-          <button id="opt-audio" class="fantasy-btn ${settings.audioEnabled ? 'active' : ''}">${settings.audioEnabled ? 'ENABLED' : 'MUTED'}</button>
-        </div>
-        <div class="form-row">
-          <span>Camera Sensitivity (${settings.sensitivity.toFixed(1)}x)</span>
-          <input id="opt-sens" type="range" min="0.4" max="2.2" step="0.1" value="${settings.sensitivity}" />
-        </div>
-        <div style="text-align:right;margin-top:16px;">
-          <button id="opt-close" class="fantasy-btn active">Resume</button>
+
+        <div class="modal-footer">
+          <button id="opt-close" class="adv-btn primary">Resume Adventure</button>
         </div>
       </div>
     `;
+
+    const tabGameplay = this.settingsModal.querySelector('#tab-gameplay')!;
+    const tabDev = this.settingsModal.querySelector('#tab-dev')!;
+    const bodyGameplay = this.settingsModal.querySelector('#tab-body-gameplay')!;
+    const bodyDev = this.settingsModal.querySelector('#tab-body-dev')!;
+
+    tabGameplay.addEventListener('click', () => {
+      tabGameplay.classList.add('active');
+      tabDev.classList.remove('active');
+      bodyGameplay.classList.remove('hidden');
+      bodyDev.classList.add('hidden');
+    });
+
+    tabDev.addEventListener('click', () => {
+      tabDev.classList.add('active');
+      tabGameplay.classList.remove('active');
+      bodyDev.classList.remove('hidden');
+      bodyGameplay.classList.add('hidden');
+    });
+
+    this.settingsModal.querySelectorAll('[data-warp]').forEach((el) => {
+      el.addEventListener('click', () => {
+        const target = el.getAttribute('data-warp') as BossId | 'hub';
+        this.closeSettingsModal();
+        this.handlers.onCloseSettings();
+        this.handlers.onWarpBoss(target);
+      });
+    });
 
     this.settingsModal.querySelectorAll('[data-preset]').forEach((el) => {
       el.addEventListener('click', () => {
         const preset = el.getAttribute('data-preset') as GraphicsPreset;
         const next = { ...settings, preset };
         this.handlers.onUpdateSettings(next);
-        this.openSettingsModal(next);
+        this.openSettingsModal(next, player, boss, freezeTheta, telemetry);
       });
     });
 
@@ -462,7 +652,7 @@ export class GameUI {
         const fpsCap = Number(el.getAttribute('data-fps')) as FpsCap;
         const next = { ...settings, fpsCap };
         this.handlers.onUpdateSettings(next);
-        this.openSettingsModal(next);
+        this.openSettingsModal(next, player, boss, freezeTheta, telemetry);
       });
     });
 
@@ -471,20 +661,20 @@ export class GameUI {
         const controlMode = el.getAttribute('data-ctrl') as ControlSchemeMode;
         const next = { ...settings, controlMode };
         this.handlers.onUpdateSettings(next);
-        this.openSettingsModal(next);
+        this.openSettingsModal(next, player, boss, freezeTheta, telemetry);
       });
     });
 
-    this.settingsModal.querySelector('#opt-show-fps')!.addEventListener('click', () => {
+    this.settingsModal.querySelector('#opt-fps')!.addEventListener('click', () => {
       const next = { ...settings, showFps: !settings.showFps };
       this.handlers.onUpdateSettings(next);
-      this.openSettingsModal(next);
+      this.openSettingsModal(next, player, boss, freezeTheta, telemetry);
     });
 
     this.settingsModal.querySelector('#opt-audio')!.addEventListener('click', () => {
       const next = { ...settings, audioEnabled: !settings.audioEnabled };
       this.handlers.onUpdateSettings(next);
-      this.openSettingsModal(next);
+      this.openSettingsModal(next, player, boss, freezeTheta, telemetry);
     });
 
     const sensInput = this.settingsModal.querySelector('#opt-sens') as HTMLInputElement;
@@ -493,8 +683,18 @@ export class GameUI {
       this.handlers.onUpdateSettings({ ...settings });
     });
 
+    this.settingsModal.querySelector('#dev-worked')?.addEventListener('click', () => {
+      this.closeSettingsModal();
+      this.handlers.onCloseSettings();
+      this.handlers.onOpenWorkedExample();
+    });
+    this.settingsModal.querySelector('#dev-god')?.addEventListener('click', () => this.handlers.onToggleGodMode());
+    this.settingsModal.querySelector('#dev-stam')?.addEventListener('click', () => this.handlers.onToggleInfiniteStamina());
+    this.settingsModal.querySelector('#dev-freeze')?.addEventListener('click', () => this.handlers.onToggleFreezeTheta());
+    this.settingsModal.querySelector('#dev-stagger')?.addEventListener('click', () => this.handlers.onForceStagger());
+
     this.settingsModal.querySelector('#opt-close')!.addEventListener('click', () => {
-      this.settingsModal.classList.add('hidden');
+      this.closeSettingsModal();
       this.handlers.onCloseSettings();
     });
   }
@@ -502,26 +702,37 @@ export class GameUI {
   public showWorkedExample(snapshot: WorkedExampleSnapshot): void {
     this.workedModal.classList.remove('hidden');
     this.workedModal.innerHTML = `
-      <div class="fantasy-panel modal-card">
-        <h2 class="modal-title" style="font-size:18px;">MATH 101 — WORKED EXAMPLE</h2>
-        <p class="modal-subtitle">Live Differential Calculus Evaluation from Combat State</p>
-        <div class="worked-step"><strong>1. Active Boss Function:</strong><br/><code>${snapshot.functionFormula}</code></div>
-        <div class="worked-step"><strong>2. Derivative Rule Applied:</strong><br/><code>${snapshot.derivativeRule}</code></div>
-        <div class="worked-step"><strong>3. Evaluated at Current Angle θ:</strong><br/>
-          <code>θ = ${snapshot.thetaPiLabel}</code><br/>
-          <code>f(θ) = ${snapshot.evaluatedFunction.toFixed(4)}</code> ·
-          <code>f′(θ) exact = ${snapshot.evaluatedSlope.toFixed(4)}</code> ·
-          <code>numeric = ${snapshot.numericSlope.toFixed(4)}</code>
-          ${snapshot.isCriticalPoint ? '<br/><span class="math-badge-crit">Critical Point: f′(θ) ≈ 0 (Maximum Stagger Window)</span>' : ''}
-          ${snapshot.nearAsymptote ? '<br/><span class="math-badge-warn">Near Vertical Asymptote: Rate of change spikes!</span>' : ''}
+      <div class="adventure-modal worked-card">
+        <div class="title-crest">✧ DIFFERENTIAL CALCULUS ✧</div>
+        <h2 class="worked-title">MATH 101 — LIVE WORKED EXAMPLE</h2>
+        <p class="worked-sub">Computed live from current trigonometric wave state</p>
+        <div class="worked-step">
+          <span class="step-num">Step 1 · Active Boss Function</span>
+          <code>${snapshot.functionFormula}</code>
         </div>
-        <div class="worked-step"><strong>4. Player Choice & Gameplay Outcome:</strong><br/>
-          Sigil: <code>${snapshot.chosenSigilLabel}</code> (${snapshot.isExactMatch ? 'EXACT MATCH' : 'MISMATCH'}) ·
-          Multiplier: <code>${snapshot.damageMultiplier.toFixed(2)}×</code><br/>
-          <span>${snapshot.outcomeSummary}</span>
+        <div class="worked-step">
+          <span class="step-num">Step 2 · Exact Derivative Rule</span>
+          <code>${snapshot.derivativeRule}</code>
         </div>
-        <div style="text-align:right;margin-top:12px;">
-          <button id="worked-close" class="fantasy-btn active">Resume Fight</button>
+        <div class="worked-step">
+          <span class="step-num">Step 3 · Evaluated at Angle θ</span>
+          <div class="step-details">
+            <code>θ = ${snapshot.thetaPiLabel}</code>
+            <code>f(θ) = ${snapshot.evaluatedFunction.toFixed(3)}</code>
+            <code>f′(θ) exact = ${snapshot.evaluatedSlope.toFixed(3)}</code>
+            <code>numeric = ${snapshot.numericSlope.toFixed(3)}</code>
+          </div>
+          ${snapshot.isCriticalPoint ? '<div class="crit-badge">★ CRITICAL POINT f′(θ) ≈ 0: Maximum Stagger Window!</div>' : ''}
+          ${snapshot.nearAsymptote ? '<div class="warn-badge">⚠ NEAR VERTICAL ASYMPTOTE: Extreme wave surge!</div>' : ''}
+        </div>
+        <div class="worked-step">
+          <span class="step-num">Step 4 · Chosen Sigil & Strike Resolution</span>
+          <div>Attuned Sigil: <strong>${snapshot.chosenSigilLabel}</strong> (${snapshot.isExactMatch ? 'MATCH' : 'MISMATCH'})</div>
+          <div>Damage Multiplier: <strong>${snapshot.damageMultiplier.toFixed(2)}×</strong></div>
+          <div style="font-size:13px;color:var(--adv-text-muted);margin-top:4px;">${snapshot.outcomeSummary}</div>
+        </div>
+        <div class="modal-footer">
+          <button id="worked-close" class="adv-btn primary">Resume Combat</button>
         </div>
       </div>
     `;
@@ -531,150 +742,79 @@ export class GameUI {
     });
   }
 
-  public renderDevDrawer(
-    player: PlayerState,
-    boss: BossRuntime | null,
-    freezeTheta: boolean,
-    telemetry: TelemetrySnapshot,
-  ): void {
-    if (!this.devOpen) return;
-
-    const fn = boss ? boss.activeFunction : 'sin';
-    const theta = boss ? boss.theta : 0;
-    const fVal = evaluateTrig(fn, theta).value;
-    const dExact = evaluateExactDerivative(fn, theta).value;
-    const dNum = evaluateNumericDerivative(fn, theta);
-
-    // Only rebuild structure when closed/opened or periodically; keep telemetry lightweight
-    if (!this.telemetryEl || this.devDrawer.children.length === 0) {
-      this.devDrawer.innerHTML = `
-        <div style="display:flex;justify-content:space-between;align-items:center;">
-          <strong style="font-family:var(--font-display);color:var(--brass);letter-spacing:0.1em;">DEV & DEMO INSPECTOR</strong>
-          <button id="dev-close" class="fantasy-btn" style="padding:3px 8px;">✕</button>
-        </div>
-        <div class="dev-section-title">Arena / Boss Warp</div>
-        <div class="btn-group">
-          <button data-warp="hub" class="fantasy-btn">Hub</button>
-          <button data-warp="witch" class="fantasy-btn">Witch</button>
-          <button data-warp="lich" class="fantasy-btn">Lich</button>
-          <button data-warp="dragon" class="fantasy-btn">Dragon</button>
-        </div>
-        <div class="dev-section-title">Combat & Calculus Toggles</div>
-        <div class="btn-group">
-          <button id="dev-god" class="fantasy-btn">God Mode</button>
-          <button id="dev-stam" class="fantasy-btn">Inf Stamina</button>
-          <button id="dev-freeze" class="fantasy-btn">Freeze θ</button>
-          <button id="dev-stagger" class="fantasy-btn">Force Stagger</button>
-        </div>
-        <div class="dev-section-title">MATH 101 Class Presentation</div>
-        <button id="dev-worked" class="fantasy-btn active" style="width:100%;">Open Worked Example Overlay</button>
-        <div class="dev-section-title">Live Telemetry</div>
-        <div id="dev-telemetry" class="telemetry-grid"></div>
-      `;
-      this.telemetryEl = this.devDrawer.querySelector('#dev-telemetry')!;
-      this.devDrawer.querySelector('#dev-close')!.addEventListener('click', () => this.toggleDevDrawer());
-      this.devDrawer.querySelectorAll('[data-warp]').forEach((b) => {
-        b.addEventListener('click', () =>
-          this.handlers.onWarpBoss(b.getAttribute('data-warp') as BossId | 'hub'),
-        );
-      });
-      this.devDrawer.querySelector('#dev-god')!.addEventListener('click', () => this.handlers.onToggleGodMode());
-      this.devDrawer.querySelector('#dev-stam')!.addEventListener('click', () =>
-        this.handlers.onToggleInfiniteStamina(),
-      );
-      this.devDrawer.querySelector('#dev-freeze')!.addEventListener('click', () =>
-        this.handlers.onToggleFreezeTheta(),
-      );
-      this.devDrawer.querySelector('#dev-stagger')!.addEventListener('click', () =>
-        this.handlers.onForceStagger(),
-      );
-      this.devDrawer.querySelector('#dev-worked')!.addEventListener('click', () =>
-        this.handlers.onOpenWorkedExample(),
-      );
-    }
-
-    this.devDrawer.querySelector('#dev-god')?.classList.toggle('active', player.godMode);
-    this.devDrawer.querySelector('#dev-stam')?.classList.toggle('active', player.infiniteStamina);
-    this.devDrawer.querySelector('#dev-freeze')?.classList.toggle('active', freezeTheta);
-
-    this.telemetryEl.innerHTML = `
-      <div>FPS: ${telemetry.fps.toFixed(0)}</div>
-      <div>Frame: ${telemetry.frameMs.toFixed(1)} ms</div>
-      <div>Draws: ${telemetry.drawCalls}</div>
-      <div>Tris: ${telemetry.triangles}</div>
-      <div>f(θ): ${fn}(${theta.toFixed(2)})</div>
-      <div>val: ${fVal.toFixed(3)}</div>
-      <div>f′ exact: ${dExact.toFixed(3)}</div>
-      <div>f′ num: ${dNum.toFixed(3)}</div>
-    `;
-  }
-
   public updateHUD(
     player: PlayerState,
     boss: BossRuntime | null,
     pov: CameraPOV,
     settings: GameSettings,
     telemetry: TelemetrySnapshot,
-    nearbyGateBoss: BossId | null,
-    freezeTheta = false,
+    landmark: BiomeLandmark | null,
   ): void {
+    // 1. Vitals
     const maxHp = computeEffectiveStat(player, 'maxHp');
     const maxStam = computeEffectiveStat(player, 'maxStamina');
-    this.hpFill.style.width = `${(player.hp / maxHp) * 100}%`;
-    this.staminaFill.style.width = `${(player.stamina / maxStam) * 100}%`;
-    this.root.querySelector('#flask-count')!.textContent = `FLASKS: ${player.flasksRemaining}`;
+    this.hpFill.style.width = `${Math.max(0, Math.min(100, (player.hp / maxHp) * 100))}%`;
+    this.staminaFill.style.width = `${Math.max(0, Math.min(100, (player.stamina / maxStam) * 100))}%`;
+    this.vitalsHpNum.textContent = `${Math.max(0, player.hp)}/${maxHp}`;
+    this.root.querySelector('#flask-label')!.textContent = `${player.flasksRemaining}`;
 
-    const sigilMeta = SIGIL_BY_ID[player.selectedSigil];
-    this.vitalsText.innerHTML = `<span>HP ${player.hp}/${maxHp}</span><span style="color:${sigilMeta.accentHex}">SIGIL: ${sigilMeta.label}</span>`;
-
-    this.povBtn.textContent = `POV: ${pov === 'first' ? '1ST' : '3RD'}`;
+    // 2. POV & FPS
+    const povLabel = this.povBtn.querySelector('.btn-subtext') as HTMLElement;
+    povLabel.textContent = pov === 'first' ? '1ST' : '3RD';
     this.fpReticle.classList.toggle('hidden', pov !== 'first');
 
     this.fpsBadge.classList.toggle('hidden', !settings.showFps);
-    this.fpsBadge.textContent = `${telemetry.fps.toFixed(0)} FPS · ${PRESET_PROFILES[settings.preset].label.toUpperCase()}`;
+    this.fpsBadge.textContent = `${telemetry.fps.toFixed(0)} FPS · ${PRESET_PROFILES[settings.preset].label}`;
 
-    for (const [id, el] of this.sigilButtons) {
-      el.classList.toggle('selected', id === player.selectedSigil);
+    // 3. Active Sigil Medallion & 6-Pip Row
+    const sigilMeta = SIGIL_BY_ID[player.selectedSigil];
+    const medLabel = this.activeSigilPill.querySelector('#medallion-label') as HTMLElement;
+    medLabel.textContent = sigilMeta.label;
+    const medPath = this.activeSigilPill.querySelector('path') as SVGPathElement;
+    medPath.setAttribute('d', SIGIL_SVG_PATHS[player.selectedSigil]);
+    medPath.setAttribute('stroke', sigilMeta.accentHex);
+
+    for (const [id, btn] of this.sigilPipButtons) {
+      btn.classList.toggle('active', id === player.selectedSigil);
     }
 
-    if (nearbyGateBoss && !boss) {
-      const cfg = BOSS_CONFIGS[nearbyGateBoss];
-      this.interactBanner.classList.remove('hidden');
-      this.interactBanner.innerHTML = `FOG GATE: <strong style="color:var(--brass)">${cfg.name}, ${cfg.title}</strong> — Press <strong>F</strong> or <strong>GATE</strong> to Enter`;
-    } else {
-      this.interactBanner.classList.add('hidden');
-    }
+    // 4. Region Banner update
+    const isBossEngaged = !!boss && boss.phase !== 'IDLE_GUARD' && boss.phase !== 'DEFEATED';
+    this.updateRegion(landmark, isBossEngaged);
 
-    if (boss) {
+    // 5. Boss Fight HUD
+    if (isBossEngaged) {
       const cfg = BOSS_CONFIGS[boss.id];
-      const def = TRIG_DEFINITIONS[boss.activeFunction];
       const fEval = evaluateTrig(boss.activeFunction, boss.theta);
       const dEval = evaluateExactDerivative(boss.activeFunction, boss.theta);
       const crit = isCriticalPoint(boss.activeFunction, boss.theta);
 
       this.bossHud.classList.remove('hidden');
-      this.bossNameEl.textContent = `${cfg.name}, ${cfg.title}`;
-      this.bossPhaseEl.textContent = boss.wardActive ? 'PHASE WARD ACTIVE' : boss.phase;
-      this.bossHpFill.style.width = `${(boss.hp / boss.maxHp) * 100}%`;
-      this.bossStaggerFill.style.width = `${(boss.stagger / boss.maxStagger) * 100}%`;
+      this.bossNameEl.textContent = `${cfg.name} · ${cfg.title}`;
 
-      this.mathPlaque.innerHTML = `
-        <span><strong>${def.formula}</strong></span>
-        <span>θ = ${formatThetaPi(boss.theta)}</span>
-        <span>f(θ) = ${fEval.value.toFixed(2)}</span>
-        <span>f′(θ) = ${dEval.value.toFixed(2)}</span>
-        ${
-          crit
-            ? '<span class="math-badge-crit">CRITICAL POINT (f′≈0): MAX STAGGER!</span>'
-            : dEval.nearAsymptote
-              ? '<span class="math-badge-warn">ASYMPTOTE SURGE!</span>'
-              : ''
-        }
+      let statusText = 'Attuned Combat';
+      if (boss.wardActive) statusText = 'Phase Ward Active';
+      else if (boss.phase === 'STAGGERED') statusText = 'Staggered (Crest Shatter)';
+      else if (boss.phase === 'ASYMPTOTE_SURGE') statusText = 'Asymptote Surge!';
+      this.bossStatusEl.textContent = statusText;
+
+      this.bossHpFill.style.width = `${Math.max(0, Math.min(100, (boss.hp / boss.maxHp) * 100))}%`;
+      this.bossStaggerFill.style.width = `${Math.max(0, Math.min(100, (boss.stagger / boss.maxStagger) * 100))}%`;
+
+      const sign = dEval.value >= 0 ? '+' : '';
+      this.equationRibbon.innerHTML = `
+        <span class="eq-term">f(θ) = <strong>${boss.activeFunction}(θ)</strong></span>
+        <span class="eq-sep">·</span>
+        <span class="eq-term">θ = <strong>${formatThetaPi(boss.theta).split(' ')[0]}</strong></span>
+        <span class="eq-sep">·</span>
+        <span class="eq-term">f(θ) = <strong>${fEval.value.toFixed(2)}</strong></span>
+        <span class="eq-sep">·</span>
+        <span class="eq-term highlight">f′(θ) = <strong>${sign}${dEval.value.toFixed(2)}</strong></span>
+        ${crit ? '<span class="eq-tag crit">★ f′≈0 CRITICAL</span>' : ''}
+        ${dEval.nearAsymptote ? '<span class="eq-tag warn">⚠ ASYMPTOTE</span>' : ''}
       `;
     } else {
       this.bossHud.classList.add('hidden');
     }
-
-    this.renderDevDrawer(player, boss, freezeTheta, telemetry);
   }
 }

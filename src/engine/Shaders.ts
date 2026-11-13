@@ -1,9 +1,9 @@
 import * as THREE from 'three';
 
 export function createSkyDomeMaterial(
-  zenithHex = 0x0b1024,
-  horizonHex = 0x1a1528,
-  moonColorHex = 0xe8c174,
+  zenithHex = 0x2674de,
+  horizonHex = 0xc5ecff,
+  sunColorHex = 0xfff3c6,
 ): THREE.ShaderMaterial {
   return new THREE.ShaderMaterial({
     side: THREE.BackSide,
@@ -12,13 +12,13 @@ export function createSkyDomeMaterial(
       uTime: { value: 0 },
       uZenith: { value: new THREE.Color(zenithHex) },
       uHorizon: { value: new THREE.Color(horizonHex) },
-      uMoonColor: { value: new THREE.Color(moonColorHex) },
+      uSunColor: { value: new THREE.Color(sunColorHex) },
     },
     vertexShader: /* glsl */ `
       varying vec3 vWorldDir;
       void main() {
-        vec4 worldPos = modelMatrix * vec4(position, 1.0);
         vWorldDir = normalize(position);
+        vec4 worldPos = modelMatrix * vec4(position, 1.0);
         gl_Position = projectionMatrix * viewMatrix * worldPos;
       }
     `,
@@ -27,55 +27,73 @@ export function createSkyDomeMaterial(
       uniform float uTime;
       uniform vec3 uZenith;
       uniform vec3 uHorizon;
-      uniform vec3 uMoonColor;
+      uniform vec3 uSunColor;
       varying vec3 vWorldDir;
 
-      float hash31(vec3 p) {
-        p = fract(p * vec3(443.897, 441.423, 437.195));
-        p += dot(p, p.yzx + 19.19);
-        return fract((p.x + p.y) * p.z);
+      float hash21(vec2 p) {
+        p = fract(p * vec2(123.34, 456.21));
+        p += dot(p, p + 45.32);
+        return fract(p.x * p.y);
+      }
+
+      float noise2D(vec2 p) {
+        vec2 i = floor(p);
+        vec2 f = fract(p);
+        f = f * f * (3.0 - 2.0 * f);
+        float a = hash21(i);
+        float b = hash21(i + vec2(1.0, 0.0));
+        float c = hash21(i + vec2(0.0, 1.0));
+        float d = hash21(i + vec2(1.0, 1.0));
+        return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+      }
+
+      float fbmClouds(vec2 p) {
+        float v = 0.0;
+        float amp = 0.5;
+        for (int i = 0; i < 4; i++) {
+          v += amp * noise2D(p);
+          p = p * 2.07 + vec2(17.1, 31.7);
+          amp *= 0.5;
+        }
+        return v;
       }
 
       void main() {
         vec3 dir = normalize(vWorldDir);
-        float h = clamp(dir.y * 0.5 + 0.5, 0.0, 1.0);
-        float horizonFactor = smoothstep(-0.08, 0.52, dir.y);
-        vec3 sky = mix(uHorizon, uZenith, pow(horizonFactor, 0.78));
+        float up = clamp(dir.y, -0.2, 1.0);
+        float horizonFactor = smoothstep(-0.04, 0.58, up);
+        vec3 midSky = mix(uHorizon, uZenith, 0.42);
+        vec3 sky = mix(uHorizon, midSky, smoothstep(0.0, 0.25, horizonFactor));
+        sky = mix(sky, uZenith, pow(horizonFactor, 0.85));
 
-        // Ethereal astral nebula ribbons across the upper vault
-        float wispA = sin(dir.x * 5.0 + dir.z * 3.0 + uTime * 0.08);
-        float wispB = cos(dir.y * 8.0 - dir.x * 4.0 - uTime * 0.05);
-        float nebula = smoothstep(0.15, 0.95, 0.5 + 0.3 * wispA + 0.25 * wispB) * smoothstep(0.0, 0.45, dir.y);
-        sky += uMoonColor * nebula * 0.12;
+        // Radiant sun & atmospheric corona
+        vec3 sunDir = normalize(vec3(0.42, 0.54, -0.73));
+        float cosSun = max(0.0, dot(dir, sunDir));
+        float sunGlowWide = pow(cosSun, 6.0) * 0.28;
+        float sunGlowTight = pow(cosSun, 48.0) * 0.65;
+        float sunDisc = smoothstep(0.9965, 0.9985, cosSun) * 1.45;
+        sky += uSunColor * (sunGlowWide + sunGlowTight + sunDisc);
 
-        // Crisp circular twinkling starfield in the night vault
-        vec3 starGrid = dir * 115.0;
-        vec3 cell = floor(starGrid);
-        vec3 local = fract(starGrid) - 0.5;
-        float rnd = hash31(cell);
-        if (rnd > 0.965 && dir.y > -0.02) {
-          float distFromCenter = length(local);
-          float dotMask = smoothstep(0.26, 0.03, distFromCenter);
-          float twinkle = 0.6 + 0.4 * sin(uTime * 2.6 + rnd * 120.0);
-          float star = dotMask * twinkle * smoothstep(-0.02, 0.22, dir.y);
-          sky += mix(vec3(0.8, 0.9, 1.0), uMoonColor, fract(rnd * 37.0)) * star * 1.5;
+        // Soft drifting BotW/Genshin-style sunlit cumulus clouds
+        if (dir.y > 0.02) {
+          vec2 cloudUv = dir.xz / (dir.y + 0.19) * 1.15;
+          cloudUv += vec2(uTime * 0.016, uTime * 0.008);
+          float n = fbmClouds(cloudUv);
+          float nDetail = fbmClouds(cloudUv * 2.3 - vec2(uTime * 0.01, 0.0));
+          float density = smoothstep(0.50, 0.78, n * 0.75 + nDetail * 0.28);
+          float cloudFade = smoothstep(0.02, 0.18, dir.y) * (1.0 - smoothstep(0.68, 0.96, dir.y));
+          float cloudMask = density * cloudFade * 0.88;
+
+          // Sunlit cream tops, gentle periwinkle undersides
+          vec3 cloudShadow = mix(vec3(0.76, 0.85, 0.96), uHorizon, 0.35);
+          vec3 cloudLit = mix(vec3(0.99, 0.99, 0.97), uSunColor, 0.22 + 0.3 * pow(cosSun, 4.0));
+          vec3 cloudCol = mix(cloudShadow, cloudLit, smoothstep(0.35, 0.78, n));
+          sky = mix(sky, cloudCol, cloudMask);
         }
 
-        // Eclipsed Astral Moon positioned above the northern sanctuary arch
-        vec3 moonDir = normalize(vec3(-0.18, 0.38, -0.91));
-        float cosTheta = dot(dir, moonDir);
-        float outerGlow = pow(max(0.0, cosTheta), 14.0) * 0.42;
-        float corona = smoothstep(0.9925, 0.9975, cosTheta) * 1.6;
-        float eclipseCore = smoothstep(0.9968, 0.9982, cosTheta);
-        float rim = smoothstep(0.9955, 0.9972, cosTheta) - eclipseCore * 0.92;
-
-        sky += uMoonColor * outerGlow;
-        sky = mix(sky, vec3(0.03, 0.03, 0.06), eclipseCore * 0.92);
-        sky += uMoonColor * max(0.0, rim + corona * 0.45) * 1.35;
-
-        // Horizon mist band
-        float mist = exp(-abs(dir.y) * 9.0);
-        sky = mix(sky, uHorizon * 1.25, mist * 0.55);
+        // Soft sunlit atmospheric horizon haze
+        float mist = exp(-abs(dir.y) * 9.5);
+        sky = mix(sky, mix(uHorizon, vec3(0.93, 0.97, 1.0), 0.35), mist * 0.65);
 
         gl_FragColor = vec4(sky, 1.0);
       }
@@ -88,7 +106,7 @@ export function createSlashArcMaterial(colorHex: number): THREE.ShaderMaterial {
     transparent: true,
     depthWrite: false,
     side: THREE.DoubleSide,
-    blending: THREE.AdditiveBlending,
+    blending: THREE.NormalBlending,
     uniforms: {
       uProgress: { value: 0 },
       uColor: { value: new THREE.Color(colorHex) },
@@ -107,12 +125,12 @@ export function createSlashArcMaterial(colorHex: number): THREE.ShaderMaterial {
       varying vec2 vUv;
 
       void main() {
-        float trail = smoothstep(0.0, 0.72, vUv.x) * (1.0 - smoothstep(0.75, 1.0, vUv.x));
+        float trail = smoothstep(0.0, 0.65, vUv.x) * (1.0 - smoothstep(0.72, 1.0, vUv.x));
         float edge = sin(vUv.y * 3.14159);
-        float fade = 1.0 - smoothstep(0.25, 1.0, uProgress);
-        float core = pow(edge, 1.6) * trail * fade;
-        vec3 col = mix(uColor, vec3(1.0, 0.96, 0.85), core * 0.65) * 1.85;
-        gl_FragColor = vec4(col, clamp(core * 1.15, 0.0, 1.0));
+        float fade = 1.0 - smoothstep(0.28, 1.0, uProgress);
+        float core = pow(edge, 1.35) * trail * fade;
+        vec3 col = mix(uColor * 1.15, vec3(1.0, 0.99, 0.92), smoothstep(0.45, 0.95, core));
+        gl_FragColor = vec4(col, clamp(core * 1.35, 0.0, 0.96));
       }
     `,
   });
@@ -150,8 +168,8 @@ export function createFogGateMaterial(colorHex: number): THREE.ShaderMaterial {
         float mist = 0.55 + 0.25 * w1 + 0.22 * w2 + swirl;
         float edgeX = smoothstep(0.0, 0.22, vUv.x) * smoothstep(1.0, 0.78, vUv.x);
         float edgeY = smoothstep(0.0, 0.14, vUv.y) * smoothstep(1.0, 0.75, vUv.y);
-        float alpha = clamp(mist * edgeX * edgeY * 0.85 * uIntensity, 0.0, 1.0);
-        vec3 col = mix(uColor * 1.25, vec3(1.0, 0.88, 0.62), smoothstep(0.6, 1.0, mist) * 0.55);
+        float alpha = clamp(mist * edgeX * edgeY * 0.78 * uIntensity, 0.0, 1.0);
+        vec3 col = mix(uColor * 1.2, vec3(1.0, 0.95, 0.78), smoothstep(0.6, 1.0, mist) * 0.55);
         gl_FragColor = vec4(col, alpha);
       }
     `,
@@ -163,12 +181,12 @@ export function createWardShellMaterial(colorHex: number): THREE.ShaderMaterial 
     transparent: true,
     depthWrite: false,
     side: THREE.DoubleSide,
-    blending: THREE.AdditiveBlending,
+    blending: THREE.NormalBlending,
     uniforms: {
       uTime: { value: 0 },
       uColor: { value: new THREE.Color(colorHex) },
       uPulse: { value: 0.5 },
-      uOpacity: { value: 0.9 },
+      uOpacity: { value: 0.75 },
     },
     vertexShader: /* glsl */ `
       varying vec3 vWorldNormal;
@@ -195,11 +213,43 @@ export function createWardShellMaterial(colorHex: number): THREE.ShaderMaterial 
       void main() {
         vec3 n = normalize(vWorldNormal);
         vec3 v = normalize(vViewDir);
-        float fresnel = pow(1.0 - clamp(abs(dot(n, v)), 0.0, 1.0), 2.1);
+        float fresnel = pow(1.0 - clamp(abs(dot(n, v)), 0.0, 1.0), 1.9);
         float lattice = 0.5 + 0.5 * sin(vUv.y * 32.0 - uTime * 3.8) * cos(vUv.x * 20.0 + uTime * 2.2);
-        float alpha = clamp((fresnel * 0.92 + lattice * 0.28 * uPulse) * uOpacity, 0.0, 0.96);
-        vec3 col = uColor * (1.05 + 0.7 * uPulse) + vec3(1.0, 0.88, 0.62) * fresnel * 0.45;
+        float alpha = clamp((fresnel * 0.85 + lattice * 0.24 * uPulse) * uOpacity, 0.0, 0.88);
+        vec3 col = mix(uColor, vec3(1.0, 0.96, 0.84), fresnel * 0.45) * (0.95 + 0.35 * uPulse);
         gl_FragColor = vec4(col, alpha);
+      }
+    `,
+  });
+}
+
+export function createWaterStreamMaterial(): THREE.ShaderMaterial {
+  return new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    uniforms: {
+      uTime: { value: 0 },
+    },
+    vertexShader: /* glsl */ `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: /* glsl */ `
+      precision highp float;
+      uniform float uTime;
+      varying vec2 vUv;
+
+      void main() {
+        float flow = sin(vUv.x * 26.0 - uTime * 3.2 + sin(vUv.y * 10.0) * 1.5);
+        float shimmer = smoothstep(0.45, 0.95, 0.5 + 0.5 * flow);
+        float edge = smoothstep(0.0, 0.16, vUv.y) * smoothstep(1.0, 0.84, vUv.y);
+        vec3 deep = vec3(0.18, 0.62, 0.82);
+        vec3 foam = vec3(0.86, 0.97, 1.0);
+        vec3 col = mix(deep, foam, shimmer * 0.48 + (1.0 - edge) * 0.25);
+        gl_FragColor = vec4(col, edge * 0.84);
       }
     `,
   });

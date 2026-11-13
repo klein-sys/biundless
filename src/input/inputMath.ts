@@ -2,6 +2,7 @@ export type GameAction =
   | 'attack'
   | 'castSigil'
   | 'dodge'
+  | 'jump'
   | 'heal'
   | 'togglePov'
   | 'lockOn'
@@ -50,4 +51,3 @@ export class ActionBuffer {
     this.pressedAt.clear();
   }
 }
-

@@ -8,13 +8,15 @@ export class ProceduralAudio {
   public unlock(): void {
     if (!this.enabled) return;
     if (!this.ctx) {
-      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      const AudioCtx =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
       if (!AudioCtx) return;
       this.ctx = new AudioCtx();
       this.masterGain = this.ctx.createGain();
       this.masterGain.gain.value = this.volume;
       this.masterGain.connect(this.ctx.destination);
-      this.startAmbientDrone();
+      this.startAmbientBreezePad();
     }
     if (this.ctx.state === 'suspended') {
       void this.ctx.resume();
@@ -29,29 +31,27 @@ export class ProceduralAudio {
     }
   }
 
-  private startAmbientDrone(): void {
+  private startAmbientBreezePad(): void {
     if (!this.ctx || !this.masterGain) return;
-    const osc1 = this.ctx.createOscillator();
-    const osc2 = this.ctx.createOscillator();
+    // Gentle sunlit Lydian open-fifth shimmer pad (C3 + G3 + D4)
+    const freqs = [130.81, 196.0, 293.66];
     const filter = this.ctx.createBiquadFilter();
-    this.droneGain = this.ctx.createGain();
-
-    osc1.type = 'sawtooth';
-    osc1.frequency.value = 55; // Low A1 dark fantasy drone
-    osc2.type = 'triangle';
-    osc2.frequency.value = 82.41; // E2 fifth
-
     filter.type = 'lowpass';
-    filter.frequency.value = 180;
-    this.droneGain.gain.value = 0.07;
+    filter.frequency.value = 420;
 
-    osc1.connect(filter);
-    osc2.connect(filter);
+    this.droneGain = this.ctx.createGain();
+    this.droneGain.gain.value = 0.032;
+
     filter.connect(this.droneGain);
     this.droneGain.connect(this.masterGain);
 
-    osc1.start();
-    osc2.start();
+    for (const f of freqs) {
+      const osc = this.ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.value = f;
+      osc.connect(filter);
+      osc.start();
+    }
   }
 
   public playSlash(comboStep = 0): void {
@@ -60,11 +60,11 @@ export class ProceduralAudio {
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
     osc.type = 'triangle';
-    const base = 240 + (comboStep % 3) * 45;
+    const base = 260 + (comboStep % 3) * 45;
     osc.frequency.setValueAtTime(base * 1.4, now);
-    osc.frequency.exponentialRampToValueAtTime(95, now + 0.14);
+    osc.frequency.exponentialRampToValueAtTime(110, now + 0.14);
 
-    gain.gain.setValueAtTime(0.22, now);
+    gain.gain.setValueAtTime(0.2, now);
     gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
 
     osc.connect(gain);
@@ -73,17 +73,33 @@ export class ProceduralAudio {
     osc.stop(now + 0.16);
   }
 
+  public playJump(): void {
+    if (!this.enabled || !this.ctx || !this.masterGain) return;
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(220, now);
+    osc.frequency.exponentialRampToValueAtTime(420, now + 0.12);
+    gain.gain.setValueAtTime(0.11, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.13);
+    osc.connect(gain);
+    gain.connect(this.masterGain);
+    osc.start(now);
+    osc.stop(now + 0.14);
+  }
+
   public playWardShatter(isCritical: boolean): void {
     if (!this.enabled || !this.ctx || !this.masterGain) return;
     const now = this.ctx.currentTime;
-    const freqs = isCritical ? [440, 659.25, 880, 1318.5] : [392, 587.33, 784];
+    const freqs = isCritical ? [523.25, 659.25, 783.99, 1046.5] : [440, 587.33, 880];
     freqs.forEach((f, idx) => {
       if (!this.ctx || !this.masterGain) return;
       const osc = this.ctx.createOscillator();
       const gain = this.ctx.createGain();
       osc.type = 'sine';
       osc.frequency.setValueAtTime(f, now + idx * 0.03);
-      gain.gain.setValueAtTime(0.16, now + idx * 0.03);
+      gain.gain.setValueAtTime(0.15, now + idx * 0.03);
       gain.gain.exponentialRampToValueAtTime(0.001, now + 0.55 + idx * 0.04);
       osc.connect(gain);
       gain.connect(this.masterGain);
@@ -98,14 +114,14 @@ export class ProceduralAudio {
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
     osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(145, now);
-    osc.frequency.exponentialRampToValueAtTime(42, now + 0.35);
-    gain.gain.setValueAtTime(0.28, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.36);
+    osc.frequency.setValueAtTime(160, now);
+    osc.frequency.exponentialRampToValueAtTime(52, now + 0.32);
+    gain.gain.setValueAtTime(0.24, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.34);
     osc.connect(gain);
     gain.connect(this.masterGain);
     osc.start(now);
-    osc.stop(now + 0.38);
+    osc.stop(now + 0.36);
   }
 
   public playDodge(): void {
@@ -114,9 +130,9 @@ export class ProceduralAudio {
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
     osc.type = 'sine';
-    osc.frequency.setValueAtTime(190, now);
-    osc.frequency.exponentialRampToValueAtTime(80, now + 0.14);
-    gain.gain.setValueAtTime(0.14, now);
+    osc.frequency.setValueAtTime(240, now);
+    osc.frequency.exponentialRampToValueAtTime(110, now + 0.14);
+    gain.gain.setValueAtTime(0.13, now);
     gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
     osc.connect(gain);
     gain.connect(this.masterGain);
@@ -145,17 +161,18 @@ export class ProceduralAudio {
   public playBossCue(): void {
     if (!this.enabled || !this.ctx || !this.masterGain) return;
     const now = this.ctx.currentTime;
-    const osc = this.ctx.createOscillator();
-    const gain = this.ctx.createGain();
-    osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(110, now);
-    osc.frequency.linearRampToValueAtTime(88, now + 0.45);
-    gain.gain.setValueAtTime(0.16, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.48);
-    osc.connect(gain);
-    gain.connect(this.masterGain);
-    osc.start(now);
-    osc.stop(now + 0.5);
+    [220, 329.63].forEach((f, idx) => {
+      if (!this.ctx || !this.masterGain) return;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(f, now + idx * 0.08);
+      gain.gain.setValueAtTime(0.14, now + idx * 0.08);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
+      osc.connect(gain);
+      gain.connect(this.masterGain);
+      osc.start(now + idx * 0.08);
+      osc.stop(now + 0.58);
+    });
   }
 }
-

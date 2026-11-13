@@ -72,7 +72,7 @@ export const PRESET_PROFILES: Record<GraphicsPreset, GraphicsProfile> = {
 export const DEFAULT_SETTINGS: GameSettings = {
   preset: 'high',
   fpsCap: 60,
-  showFps: true,
+  showFps: false,
   controlMode: 'auto',
   sensitivity: 1.0,
   shakeStrength: 1.0,
