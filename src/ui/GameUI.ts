@@ -22,6 +22,8 @@ import {
   type WorkedExampleSnapshot,
 } from '../math/trigDerivatives';
 import type { BiomeLandmark } from '../world/SunlitValley';
+import type { DialogueChoice, DialogueNode } from '../dialogue/dialogueData';
+import { getLevelProgressFraction, type ProgressionState } from '../rpg/progressionSystem';
 
 export interface TelemetrySnapshot {
   fps: number;
@@ -49,6 +51,7 @@ export interface UIHandlers {
   onCloseWorkedExample: () => void;
   onOpenSettings: () => void;
   onCloseSettings: () => void;
+  onInteract?: () => void;
 }
 
 const SIGIL_SVG_PATHS: Record<DerivativeSigilId, string> = {
@@ -77,10 +80,24 @@ export class GameUI {
   private hpFill!: HTMLElement;
   private staminaFill!: HTMLElement;
   private vitalsHpNum!: HTMLElement;
+  private levelBadge!: HTMLElement;
+  private xpFill!: HTMLElement;
   private flaskPill!: HTMLElement;
   private povBtn!: HTMLElement;
   private menuBtn!: HTMLElement;
   private fpsBadge!: HTMLElement;
+
+  private interactPrompt!: HTMLElement;
+  private interactLabel!: HTMLElement;
+  private dialogueCard!: HTMLElement;
+  private dialoguePortrait!: HTMLElement;
+  private dialogueSpeakerName!: HTMLElement;
+  private dialogueSpeakerTitle!: HTMLElement;
+  private dialogueLvl!: HTMLElement;
+  private dialoguePoints!: HTMLElement;
+  private dialogueBody!: HTMLElement;
+  private dialogueChoices!: HTMLElement;
+  private mTalkBtn!: HTMLElement;
 
   private bossHud!: HTMLElement;
   private bossNameEl!: HTMLElement;
@@ -113,6 +130,10 @@ export class GameUI {
           </div>
           <div class="bar-pill hp-track"><div id="hp-fill" class="bar-fill hp" style="width:100%"></div></div>
           <div class="bar-pill stam-track"><div id="stamina-fill" class="bar-fill stam" style="width:100%"></div></div>
+          <div class="hero-level-badge">
+            <span id="level-badge" class="level-tag">LVL 1</span>
+            <div class="xp-mini-track"><div id="xp-fill" class="xp-fill" style="width:0%"></div></div>
+          </div>
           <button id="flask-pill" class="flask-pill" title="Heal Flask (R)">
             <svg class="flask-icon" viewBox="0 0 24 24" fill="currentColor">
               <path d="M9 2h6v2h-1v2.2l4.8 8.8c.8 1.5-.3 3.3-2 3.3H7.2c-1.7 0-2.8-1.8-2-3.3L10 6.2V4H9V2z"/>
@@ -194,6 +215,7 @@ export class GameUI {
       <div id="mobile-controls" class="mobile-controls hidden">
         <div id="touch-stick" class="touch-joystick-zone"><div id="touch-knob" class="touch-joystick-knob"></div></div>
         <div class="touch-actions">
+          <button id="m-talk" class="touch-btn talk hidden" aria-label="Interact">TALK</button>
           <button id="m-wheel" class="touch-btn" aria-label="Derivative Wheel">SIGIL</button>
           <button id="m-lock" class="touch-btn" aria-label="Lock target">LOCK</button>
           <button id="m-heal" class="touch-btn" aria-label="Heal">HEAL</button>
@@ -202,6 +224,29 @@ export class GameUI {
           <button id="m-cast" class="touch-btn cast" aria-label="Cast Resonance">CAST</button>
           <button id="m-attack" class="touch-btn strike" aria-label="Basic Strike">STRIKE</button>
         </div>
+      </div>
+
+      <!-- Proximity Interaction Prompt -->
+      <div id="interact-prompt" class="interact-prompt hidden interactive">
+        <span class="key-badge">F</span>
+        <span id="interact-label" class="interact-label">Talk</span>
+      </div>
+
+      <!-- Interactive Dialogue & Quest Overlay -->
+      <div id="dialogue-card" class="dialogue-card hidden interactive">
+        <div class="dialogue-top">
+          <div id="dialogue-portrait" class="dialogue-portrait">🧙‍♂️</div>
+          <div class="dialogue-speaker-meta">
+            <span id="dialogue-speaker-name" class="dialogue-speaker-name">Archmage Aurelius</span>
+            <span id="dialogue-speaker-title" class="dialogue-speaker-title">Guardian of the Astrolabe</span>
+          </div>
+          <div id="dialogue-astral-vitals" class="dialogue-astral-vitals">
+            <span id="dialogue-lvl" class="astral-badge">Level 1</span>
+            <span id="dialogue-points" class="astral-badge">0 Points</span>
+          </div>
+        </div>
+        <div id="dialogue-body" class="dialogue-body"></div>
+        <div id="dialogue-choices" class="dialogue-choices"></div>
       </div>
 
       <!-- Slow-Mo Radial Wheel -->
@@ -223,10 +268,31 @@ export class GameUI {
     this.hpFill = this.root.querySelector('#hp-fill')!;
     this.staminaFill = this.root.querySelector('#stamina-fill')!;
     this.vitalsHpNum = this.root.querySelector('#hp-num')!;
+    this.levelBadge = this.root.querySelector('#level-badge')!;
+    this.xpFill = this.root.querySelector('#xp-fill')!;
     this.flaskPill = this.root.querySelector('#flask-pill')!;
     this.povBtn = this.root.querySelector('#btn-pov')!;
     this.menuBtn = this.root.querySelector('#btn-menu')!;
     this.fpsBadge = this.root.querySelector('#fps-badge')!;
+
+    this.interactPrompt = this.root.querySelector('#interact-prompt')!;
+    this.interactLabel = this.root.querySelector('#interact-label')!;
+    this.dialogueCard = this.root.querySelector('#dialogue-card')!;
+    this.dialoguePortrait = this.root.querySelector('#dialogue-portrait')!;
+    this.dialogueSpeakerName = this.root.querySelector('#dialogue-speaker-name')!;
+    this.dialogueSpeakerTitle = this.root.querySelector('#dialogue-speaker-title')!;
+    this.dialogueLvl = this.root.querySelector('#dialogue-lvl')!;
+    this.dialoguePoints = this.root.querySelector('#dialogue-points')!;
+    this.dialogueBody = this.root.querySelector('#dialogue-body')!;
+    this.dialogueChoices = this.root.querySelector('#dialogue-choices')!;
+    this.mTalkBtn = this.root.querySelector('#m-talk')!;
+
+    this.interactPrompt.addEventListener('click', () => {
+      this.handlers.onInteract?.();
+    });
+    this.mTalkBtn.addEventListener('click', () => {
+      this.handlers.onInteract?.();
+    });
 
     this.regionBanner = this.root.querySelector('#region-banner')!;
     this.combatToast = this.root.querySelector('#combat-toast')!;
@@ -749,6 +815,7 @@ export class GameUI {
     settings: GameSettings,
     telemetry: TelemetrySnapshot,
     landmark: BiomeLandmark | null,
+    progression?: ProgressionState,
   ): void {
     // 1. Vitals
     const maxHp = computeEffectiveStat(player, 'maxHp');
@@ -757,6 +824,12 @@ export class GameUI {
     this.staminaFill.style.width = `${Math.max(0, Math.min(100, (player.stamina / maxStam) * 100))}%`;
     this.vitalsHpNum.textContent = `${Math.max(0, player.hp)}/${maxHp}`;
     this.root.querySelector('#flask-label')!.textContent = `${player.flasksRemaining}`;
+
+    if (progression) {
+      this.levelBadge.textContent = `LVL ${progression.level}`;
+      const xpPct = (getLevelProgressFraction(progression) * 100).toFixed(0);
+      this.xpFill.style.width = `${xpPct}%`;
+    }
 
     // 2. POV & FPS
     const povLabel = this.povBtn.querySelector('.btn-subtext') as HTMLElement;
@@ -816,5 +889,58 @@ export class GameUI {
     } else {
       this.bossHud.classList.add('hidden');
     }
+  }
+
+  public showInteractPrompt(label: string): void {
+    this.interactLabel.textContent = label;
+    this.interactPrompt.classList.remove('hidden');
+    this.mTalkBtn.classList.remove('hidden');
+  }
+
+  public hideInteractPrompt(): void {
+    this.interactPrompt.classList.add('hidden');
+    this.mTalkBtn.classList.add('hidden');
+  }
+
+  public get isDialogueOpen(): boolean {
+    return !this.dialogueCard.classList.contains('hidden');
+  }
+
+  public openDialogue(
+    node: DialogueNode,
+    choices: DialogueChoice[],
+    progression: ProgressionState,
+    onSelect: (choice: DialogueChoice) => void,
+  ): void {
+    const roleIcons: Record<string, string> = {
+      aurelius: '🧙‍♂️',
+      blacksmith: '⚒️',
+      herbalist: '🌿',
+      scout: '🏹',
+    };
+    this.dialoguePortrait.textContent = roleIcons[node.speakerRole] ?? '✧';
+    this.dialogueSpeakerName.textContent = node.speakerName;
+    this.dialogueSpeakerTitle.textContent = node.speakerTitle;
+    this.dialogueLvl.textContent = `Astral Lvl ${progression.level}`;
+    this.dialoguePoints.textContent = `${progression.statPoints} Stat Pt${progression.statPoints === 1 ? '' : 's'}`;
+    this.dialogueBody.textContent = node.text;
+
+    this.dialogueChoices.innerHTML = '';
+    choices.forEach((choice) => {
+      const btn = document.createElement('button');
+      btn.className = 'dialogue-choice-btn';
+      btn.innerHTML = `<span>${choice.text}</span><span style="opacity:0.6;font-size:11px;">▸</span>`;
+      btn.addEventListener('click', () => {
+        onSelect(choice);
+      });
+      this.dialogueChoices.appendChild(btn);
+    });
+
+    this.dialogueCard.classList.remove('hidden');
+    this.hideInteractPrompt();
+  }
+
+  public closeDialogue(): void {
+    this.dialogueCard.classList.add('hidden');
   }
 }

@@ -1055,3 +1055,207 @@ body {
     display: none;
   }
 }
+
+/* =========================================================
+   INTERACTION PROMPT (Genshin / BotW style)
+   ========================================================= */
+.interact-prompt {
+  position: fixed;
+  bottom: 24%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--adv-bg-glass);
+  border: 1px solid var(--adv-border-strong);
+  border-radius: 999px;
+  padding: 8px 18px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.16);
+  backdrop-filter: blur(8px);
+  z-index: 25;
+  pointer-events: auto;
+  cursor: pointer;
+  transition: opacity 0.2s, transform 0.2s;
+  animation: promptPulse 2s infinite ease-in-out;
+}
+
+@keyframes promptPulse {
+  0%, 100% { transform: translateX(-50%) translateY(0); }
+  50% { transform: translateX(-50%) translateY(-3px); }
+}
+
+.key-badge {
+  background: var(--adv-gold);
+  color: #fff;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.interact-label {
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--adv-text);
+}
+
+/* =========================================================
+   FLOATING DIALOGUE CARD & QUEST SYSTEM
+   ========================================================= */
+.dialogue-card {
+  position: fixed;
+  bottom: 36px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(680px, 92vw);
+  background: var(--adv-bg-card);
+  border: 1.5px solid var(--adv-border-strong);
+  border-radius: 20px;
+  box-shadow: 0 12px 36px rgba(45, 35, 20, 0.25);
+  backdrop-filter: blur(14px);
+  padding: 22px 26px;
+  z-index: 50;
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  animation: slideUpDialogue 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slideUpDialogue {
+  from { opacity: 0; transform: translate(-50%, 20px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+
+.dialogue-top {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  border-bottom: 1px solid var(--adv-border);
+  padding-bottom: 12px;
+}
+
+.dialogue-portrait {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  border: 2px solid var(--adv-gold);
+  background: #1e1b4b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 10px rgba(200, 150, 62, 0.4);
+  font-size: 24px;
+}
+
+.dialogue-speaker-meta {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.dialogue-speaker-name {
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--adv-gold-dim);
+}
+
+.dialogue-speaker-title {
+  font-size: 11px;
+  color: var(--adv-text-muted);
+}
+
+.dialogue-astral-vitals {
+  display: flex;
+  gap: 10px;
+  font-family: var(--font-display);
+  font-size: 11px;
+}
+
+.astral-badge {
+  background: rgba(200, 150, 62, 0.12);
+  border: 1px solid var(--adv-border);
+  border-radius: 8px;
+  padding: 4px 8px;
+  color: var(--adv-gold-dim);
+  font-weight: 600;
+}
+
+.dialogue-body {
+  font-family: var(--font-serif);
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--adv-text);
+  min-height: 52px;
+}
+
+.dialogue-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.dialogue-choice-btn {
+  background: #fffdf5;
+  border: 1px solid var(--adv-border);
+  border-radius: 12px;
+  padding: 10px 16px;
+  text-align: left;
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--adv-text);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.dialogue-choice-btn:hover {
+  background: #fbf5e6;
+  border-color: var(--adv-gold);
+  transform: translateX(4px);
+  color: var(--adv-gold-dim);
+}
+
+.hero-level-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 3px;
+}
+
+.level-tag {
+  font-family: var(--font-display);
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--adv-gold-dim);
+  background: rgba(200, 150, 62, 0.15);
+  border-radius: 4px;
+  padding: 1px 4px;
+}
+
+.xp-mini-track {
+  flex: 1;
+  height: 4px;
+  background: rgba(45, 35, 20, 0.12);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.xp-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #3a8cdb, #60a5fa);
+  border-radius: 999px;
+  transition: width 0.2s ease-out;
+}
+

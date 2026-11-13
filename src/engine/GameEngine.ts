@@ -18,6 +18,7 @@ import { BOSS_CONFIGS, BOSS_ORDER, type BossId } from '../bosses/bossDefinitions
 import { DualCameraController } from '../camera/DualCameraController';
 import {
   applyDamageToPlayer,
+  applyProgressionToPlayer,
   canSpendResonanceStamina,
   computeEffectiveStat,
   createInitialPlayerState,
@@ -53,12 +54,24 @@ import {
   createArenaEnvironment,
   createBossModel,
   createPlayerModel,
+  createSolsticeHavenVillage,
   createTangentArcVisual,
   type ArenaBundle,
   type BossRig,
+  type InteractiveNpcEntity,
   type PlayerRig,
+  type SolsticeHavenBundle,
   type TangentArcVisual,
 } from './ProceduralModels';
+import {
+  computeEffectiveStats,
+  loadProgression,
+  recordBossDefeat,
+  saveProgression,
+  type ProgressionState,
+} from '../rpg/progressionSystem';
+import { DialogueRunner } from '../dialogue/dialogueRunner';
+import type { DialogueChoice } from '../dialogue/dialogueData';
 
 interface ActiveProjectile {
   mesh: THREE.Mesh;
@@ -86,6 +99,7 @@ export class GameEngine {
   private readonly camera: THREE.PerspectiveCamera;
   private readonly timer = new THREE.Timer();
   private readonly arena: ArenaBundle;
+  private readonly village: SolsticeHavenBundle;
   private readonly vfx: VfxSystem;
   private readonly playerRig: PlayerRig;
   private readonly tangentArc: TangentArcVisual;
@@ -99,6 +113,9 @@ export class GameEngine {
 
   private settings: GameSettings;
   private player: PlayerState = createInitialPlayerState();
+  private progression: ProgressionState;
+  private dialogueRunner: DialogueRunner;
+  private nearbyNpc: InteractiveNpcEntity | null = null;
   private playerPos = new THREE.Vector3(0, 0, 4);
   private playerVelocityY = 0;
   private isGrounded = true;
@@ -187,6 +204,23 @@ export class GameEngine {
 
     this.arena = createArenaEnvironment();
     this.scene.add(this.arena.group);
+
+    this.village = createSolsticeHavenVillage();
+    this.scene.add(this.village.group);
+
+    this.progression = loadProgression();
+    applyProgressionToPlayer(this.player, computeEffectiveStats(this.progression));
+
+    this.dialogueRunner = new DialogueRunner(this.progression, {
+      onShowToast: (msg) => this.ui.showToast(msg),
+      onStateChanged: () => {
+        applyProgressionToPlayer(this.player, computeEffectiveStats(this.progression));
+        saveProgression(this.progression);
+        if (!this.dialogueRunner.isOpen) {
+          this.ui.closeDialogue();
+        }
+      },
+    });
 
     this.vfx = new VfxSystem(this.scene);
 
@@ -356,6 +390,9 @@ export class GameEngine {
       onCloseSettings: () => {
         this.paused = false;
         this.syncPauseState();
+      },
+      onInteract: () => {
+        this.handleInteract();
       },
     });
 
@@ -578,6 +615,9 @@ export class GameEngine {
     if (this.input.buffer.consume('lockOn', nowSec)) {
       this.handleToggleLockOn();
     }
+    if (this.input.buffer.consume('interact', nowSec)) {
+      this.handleInteract();
+    }
     if (this.input.buffer.consume('heal', nowSec) && tryUseHealFlask(this.player)) {
       this.audio.playHeal();
       this.vfx.spawnBurst(
@@ -687,6 +727,37 @@ export class GameEngine {
       const s = (WORLD_PLAYABLE_RADIUS - 1.5) / pr;
       this.playerPos.x *= s;
       this.playerPos.z *= s;
+    }
+
+    // Collision against Solstice Haven village structures (cottages, fountain, gazebo)
+    for (const obs of this.village.obstacles) {
+      const dx = this.playerPos.x - obs.x;
+      const dz = this.playerPos.z - obs.z;
+      const d = Math.hypot(dx, dz);
+      const minD = obs.radius + 0.65;
+      if (d < minD && d > 0.001) {
+        this.playerPos.x = obs.x + (dx / d) * minD;
+        this.playerPos.z = obs.z + (dz / d) * minD;
+      }
+    }
+
+    // Update Solstice Haven Village animations
+    this.village.update(dt);
+
+    // Check NPC interaction proximity
+    let foundNpc: InteractiveNpcEntity | null = null;
+    for (const npc of this.village.interactiveNpcs) {
+      const dist = this.playerPos.distanceTo(npc.position);
+      if (dist <= npc.interactionRadius) {
+        foundNpc = npc;
+        break;
+      }
+    }
+    this.nearbyNpc = foundNpc;
+    if (this.nearbyNpc && !this.dialogueRunner.isOpen) {
+      this.ui.showInteractPrompt(`Talk to ${this.nearbyNpc.name}`);
+    } else if (!this.nearbyNpc && !this.dialogueRunner.isOpen) {
+      this.ui.hideInteractPrompt();
     }
 
     // Combat actions
@@ -843,6 +914,7 @@ export class GameEngine {
         this.settings,
         this.getTelemetry(),
         currentRegion,
+        this.progression,
       );
     }
   }
@@ -906,6 +978,12 @@ export class GameEngine {
     });
     this.lastWorkedExample = res.workedExample;
     applyDamageToBoss(activeBoss, res.damage, res.staggerGain, false);
+    if (activeBoss.hp <= 0 || (activeBoss.phase as string) === 'DEFEATED') {
+      recordBossDefeat(this.progression, activeBoss.id, 250);
+      applyProgressionToPlayer(this.player, computeEffectiveStats(this.progression));
+      saveProgression(this.progression);
+      this.ui.showToast(`BOSS DEFEATED! +250 XP · ASTRAL LEVEL ${this.progression.level}`);
+    }
     this.vfx.spawnBurst(
       new THREE.Vector3(activeBoss.x, activeBoss.y + 1.6, activeBoss.z),
       0xf5d48a,
@@ -970,6 +1048,12 @@ export class GameEngine {
 
     this.lastWorkedExample = res.workedExample;
     applyDamageToBoss(boss, res.damage, res.staggerGain, res.wardShattered);
+    if (boss.hp <= 0 || (boss.phase as string) === 'DEFEATED') {
+      recordBossDefeat(this.progression, boss.id, 250);
+      applyProgressionToPlayer(this.player, computeEffectiveStats(this.progression));
+      saveProgression(this.progression);
+      this.ui.showToast(`BOSS DEFEATED! +250 XP · ASTRAL LEVEL ${this.progression.level}`);
+    }
     const hitOrigin = new THREE.Vector3(boss.x, boss.y + 1.8, boss.z);
     const sigilHex = new THREE.Color(SIGIL_BY_ID[this.player.selectedSigil].accentHex).getHex();
 
@@ -1003,6 +1087,9 @@ export class GameEngine {
     const cfg = BOSS_CONFIGS[boss.id];
     for (const ev of events) {
       if (ev.kind === 'projectile_orb') {
+        // Telegraphed 0.8s ground runic circle under player for magic volleys
+        this.vfx.spawnGroundTelegraph(this.playerPos.x, this.playerPos.z, 2.2, 0.8, cfg.accentColor);
+
         const orb = new THREE.Mesh(
           new THREE.SphereGeometry(0.38, 10, 8),
           new THREE.MeshBasicMaterial({ color: cfg.accentColor }),
@@ -1018,10 +1105,16 @@ export class GameEngine {
           fromPlayer: false,
         });
       } else if (ev.kind === 'wave_pulse') {
-        this.spawnShockwave(ev.originX, ev.originZ, ev.radius, ev.damage, cfg.accentColor);
+        // 0.8s telegraphed expanding runic warning before shockwave detonation
+        this.vfx.spawnGroundTelegraph(ev.originX, ev.originZ, ev.radius, 0.8, cfg.accentColor, () => {
+          this.spawnShockwave(ev.originX, ev.originZ, ev.radius, ev.damage, cfg.accentColor);
+        });
       } else if (ev.kind === 'beam_sweep') {
         const dirX = Math.sin(ev.angle);
         const dirZ = Math.cos(ev.angle);
+        // Telegraph upcoming laser furrow
+        this.vfx.spawnGroundTelegraph(boss.x + dirX * 6, boss.z + dirZ * 6, 1.8, 0.65, cfg.accentColor);
+
         const bolt = new THREE.Mesh(
           new THREE.BoxGeometry(0.35, 0.35, 1.8),
           new THREE.MeshBasicMaterial({ color: cfg.accentColor }),
@@ -1038,8 +1131,40 @@ export class GameEngine {
           fromPlayer: false,
         });
       } else if (ev.kind === 'dive_slam') {
-        this.spawnShockwave(ev.targetX, ev.targetZ, ev.radius, ev.damage, cfg.accentColor);
+        // 0.85s telegraphed impact circle before dive shockwave
+        this.vfx.spawnGroundTelegraph(ev.targetX, ev.targetZ, ev.radius, 0.85, cfg.accentColor, () => {
+          this.spawnShockwave(ev.targetX, ev.targetZ, ev.radius, ev.damage, cfg.accentColor);
+        });
       }
+    }
+  }
+
+  private handleInteract(): void {
+    if (this.dialogueRunner.isOpen) {
+      this.dialogueRunner.closeDialogue();
+      this.ui.closeDialogue();
+      return;
+    }
+    if (!this.nearbyNpc) return;
+
+    const node = this.dialogueRunner.startDialogue(this.nearbyNpc.role);
+    if (!node) return;
+
+    const choices = this.dialogueRunner.getAvailableChoices();
+    this.ui.openDialogue(node, choices, this.progression, (choice) => {
+      this.handleDialogueChoice(choice);
+    });
+  }
+
+  private handleDialogueChoice(choice: DialogueChoice): void {
+    const res = this.dialogueRunner.selectChoice(choice);
+    if (res.closed || !res.nextNode) {
+      this.ui.closeDialogue();
+    } else {
+      const nextChoices = this.dialogueRunner.getAvailableChoices();
+      this.ui.openDialogue(res.nextNode, nextChoices, this.progression, (c) => {
+        this.handleDialogueChoice(c);
+      });
     }
   }
 

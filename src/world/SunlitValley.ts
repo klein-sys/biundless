@@ -19,13 +19,13 @@ export interface BiomeLandmark {
 export const BIOME_LANDMARKS: readonly BiomeLandmark[] = [
   {
     id: 'hub',
-    name: "Adventurer's Plaza",
-    subtitle: 'Sunlit Waypoint Shrine',
+    name: 'Solstice Haven',
+    subtitle: "Adventurer's Town & Waypoint Shrine",
     x: 0,
     z: 0,
     baseHeight: 0,
-    plateauRadius: 15,
-    territoryRadius: 18,
+    plateauRadius: 18,
+    territoryRadius: 22,
     accentHex: '#e6b85c',
     accentColor: 0xe6b85c,
   },

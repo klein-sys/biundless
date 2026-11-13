@@ -31,6 +31,7 @@ export interface PlayerState {
   comboStep: number;
   godMode: boolean;
   infiniteStamina: boolean;
+  resonanceBonusMultiplier?: number;
   readonly baseStats: Record<StatKey, number>;
   readonly modifiers: StatModifier[];
 }
@@ -109,6 +110,19 @@ export function removeStatModifiersBySource(player: PlayerState, source: string)
     if (player.modifiers[i].source === source) {
       player.modifiers.splice(i, 1);
     }
+  }
+}
+
+export function applyProgressionToPlayer(
+  player: PlayerState,
+  stats: { maxHp: number; maxStamina: number; resonanceMultiplier: number },
+): void {
+  const oldMaxHp = player.baseStats.maxHp;
+  player.baseStats.maxHp = stats.maxHp;
+  player.baseStats.maxStamina = stats.maxStamina;
+  player.resonanceBonusMultiplier = stats.resonanceMultiplier;
+  if (stats.maxHp > oldMaxHp) {
+    player.hp = Math.min(stats.maxHp, player.hp + (stats.maxHp - oldMaxHp));
   }
 }
 
@@ -212,8 +226,9 @@ export function resolveResonanceStrike(
   if (isMatch) {
     const aimBonus = ctx.firstPersonAim ? 0.8 : 0.25;
     const critBonus = critPoint ? 1.2 : 0.35;
-    // Exact matches always hit 3.0x-5.0x range, maximizing at f'(theta)=0 + 1st-person aim
-    multiplier = Math.min(5.0, 3.0 + aimBonus + critBonus);
+    const harmonicsMult = player.resonanceBonusMultiplier ?? 1.0;
+    // Exact matches always hit 3.0x-5.0x baseline, scaled by harmonics progression multiplier
+    multiplier = Math.min(8.0, Number(((3.0 + aimBonus + critBonus) * harmonicsMult).toFixed(2)));
     wardShattered = ctx.wardActive;
     staggerGain = critPoint ? 100 : ctx.wardActive ? 70 : 50;
     outcomeKind = critPoint ? 'critical_stagger' : ctx.wardActive ? 'ward_shattered' : 'resonance_hit';

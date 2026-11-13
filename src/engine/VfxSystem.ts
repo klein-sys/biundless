@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { getSoftGlowTexture } from './ProceduralTextures';
 import { createSlashArcMaterial } from './Shaders';
+import { getTerrainHeight } from '../world/SunlitValley';
 
 interface ActiveSlashArc {
   mesh: THREE.Mesh;
@@ -9,6 +10,19 @@ interface ActiveSlashArc {
   maxLife: number;
   startYaw: number;
   sweepDir: number;
+}
+
+export interface ActiveGroundTelegraph {
+  group: THREE.Group;
+  outerRing: THREE.Mesh;
+  innerDisc: THREE.Mesh;
+  x: number;
+  z: number;
+  radius: number;
+  life: number;
+  duration: number;
+  colorHex: number;
+  onDetonate?: () => void;
 }
 
 interface GlowSpark {
@@ -25,6 +39,7 @@ interface GlowSpark {
 export class VfxSystem {
   private readonly scene: THREE.Scene;
   private readonly slashes: ActiveSlashArc[] = [];
+  private readonly telegraphs: ActiveGroundTelegraph[] = [];
   private readonly sparkPool: GlowSpark[] = [];
   private readonly slashGeo: THREE.RingGeometry;
   private readonly glowTexture: THREE.CanvasTexture;
@@ -139,6 +154,64 @@ export class VfxSystem {
     }
   }
 
+  public spawnGroundTelegraph(
+    x: number,
+    z: number,
+    radius: number,
+    duration = 0.8,
+    colorHex = 0xf59e0b,
+    onDetonate?: () => void,
+  ): ActiveGroundTelegraph {
+    const group = new THREE.Group();
+    const groundY = getTerrainHeight(x, z) + 0.08;
+    group.position.set(x, groundY, z);
+    group.rotation.x = -Math.PI / 2;
+
+    // Outer Ring
+    const outerMat = new THREE.MeshBasicMaterial({
+      color: colorHex,
+      transparent: true,
+      opacity: 0.75,
+      side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    const outerGeo = new THREE.RingGeometry(radius * 0.92, radius, 36);
+    const outerRing = new THREE.Mesh(outerGeo, outerMat);
+    group.add(outerRing);
+
+    // Inner expanding warning disc
+    const innerMat = new THREE.MeshBasicMaterial({
+      color: colorHex,
+      transparent: true,
+      opacity: 0.35,
+      side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    const innerGeo = new THREE.CircleGeometry(radius * 0.9, 36);
+    const innerDisc = new THREE.Mesh(innerGeo, innerMat);
+    innerDisc.scale.set(0.01, 0.01, 1);
+    group.add(innerDisc);
+
+    this.scene.add(group);
+
+    const telegraph: ActiveGroundTelegraph = {
+      group,
+      outerRing,
+      innerDisc,
+      x,
+      z,
+      radius,
+      life: 0,
+      duration,
+      colorHex,
+      onDetonate,
+    };
+    this.telegraphs.push(telegraph);
+    return telegraph;
+  }
+
   public step(dt: number): void {
     for (let i = this.slashes.length - 1; i >= 0; i--) {
       const s = this.slashes[i];
@@ -152,6 +225,43 @@ export class VfxSystem {
         this.scene.remove(s.mesh);
         s.material.dispose();
         this.slashes.splice(i, 1);
+      }
+    }
+
+    // Update Ground Runic Telegraphs
+    for (let i = this.telegraphs.length - 1; i >= 0; i--) {
+      const t = this.telegraphs[i];
+      t.life += dt;
+      const prog = Math.min(1.0, t.life / t.duration);
+
+      // Inner disc expands radially to fill the warning circle
+      const scaleProg = Math.max(0.01, prog);
+      t.innerDisc.scale.set(scaleProg, scaleProg, 1);
+
+      // Outer ring pulses faster as impact nears
+      const pulseFreq = 8.0 + prog * 16.0;
+      (t.outerRing.material as THREE.MeshBasicMaterial).opacity = 0.5 + Math.sin(t.life * pulseFreq) * 0.45;
+      (t.innerDisc.material as THREE.MeshBasicMaterial).opacity = 0.2 + prog * 0.45;
+
+      if (t.life >= t.duration) {
+        // Trigger detonation
+        if (t.onDetonate) {
+          t.onDetonate();
+        }
+        // Spawn energetic impact burst
+        this.spawnBurst(
+          new THREE.Vector3(t.x, getTerrainHeight(t.x, t.z) + 0.3, t.z),
+          t.colorHex,
+          20,
+          6.5,
+          0.45
+        );
+        this.scene.remove(t.group);
+        t.outerRing.geometry.dispose();
+        (t.outerRing.material as THREE.Material).dispose();
+        t.innerDisc.geometry.dispose();
+        (t.innerDisc.material as THREE.Material).dispose();
+        this.telegraphs.splice(i, 1);
       }
     }
 
@@ -179,6 +289,14 @@ export class VfxSystem {
       s.material.dispose();
     }
     this.slashes.length = 0;
+    for (const t of this.telegraphs) {
+      this.scene.remove(t.group);
+      t.outerRing.geometry.dispose();
+      (t.outerRing.material as THREE.Material).dispose();
+      t.innerDisc.geometry.dispose();
+      (t.innerDisc.material as THREE.Material).dispose();
+    }
+    this.telegraphs.length = 0;
     for (const p of this.sparkPool) {
       p.active = false;
       p.sprite.visible = false;

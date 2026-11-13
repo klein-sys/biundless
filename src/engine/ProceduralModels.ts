@@ -1350,3 +1350,756 @@ export function createTangentArcVisual(): TangentArcVisual {
     },
   };
 }
+
+/* =====================================================================
+ * SOLSTICE HAVEN VILLAGE & NPC PROCEDURAL MODELS
+ * ===================================================================== */
+
+export interface VillageModelBundle {
+  cottages: THREE.Group[];
+  fountain: { group: THREE.Group; update: (dt: number) => void };
+  lanterns: THREE.Group[];
+  planters: THREE.Group[];
+  gazebo: { group: THREE.Group; update: (dt: number) => void };
+  archmage: { group: THREE.Group; update: (dt: number) => void };
+  npcs: {
+    id: string;
+    name: string;
+    title: string;
+    role: 'blacksmith' | 'herbalist' | 'scout';
+    group: THREE.Group;
+    update: (dt: number) => void;
+  }[];
+}
+
+export function createVillageCottage(variant: number = 0): THREE.Group {
+  const cottage = new THREE.Group();
+
+  // Wall plaster color variants
+  const wallColors = [0xeadcc6, 0xdfd3be, 0xe5dbcb, 0xd8cdb6];
+  const roofColors = [0x3d4852, 0x6e3828, 0x46533f, 0x4f423b];
+  const wallColor = wallColors[variant % wallColors.length];
+  const roofColor = roofColors[variant % roofColors.length];
+
+  // Plaster Main Body
+  const wallMat = new THREE.MeshStandardMaterial({
+    color: wallColor,
+    roughness: 0.85,
+    metalness: 0.05,
+  });
+  const wallMesh = new THREE.Mesh(new THREE.BoxGeometry(4.6, 3.2, 4.0), wallMat);
+  wallMesh.position.y = 1.6;
+  wallMesh.castShadow = true;
+  wallMesh.receiveShadow = true;
+  cottage.add(wallMesh);
+
+  // Timber Framing Posts (Corner columns and top sill)
+  const woodMat = new THREE.MeshStandardMaterial({
+    color: 0x4a2e18,
+    roughness: 0.75,
+  });
+  const postGeo = new THREE.BoxGeometry(0.3, 3.3, 0.3);
+  const corners = [
+    [-2.2, 1.65, -1.9],
+    [2.2, 1.65, -1.9],
+    [-2.2, 1.65, 1.9],
+    [2.2, 1.65, 1.9],
+  ];
+  corners.forEach(([x, y, z]) => {
+    const post = new THREE.Mesh(postGeo, woodMat);
+    post.position.set(x, y, z);
+    cottage.add(post);
+  });
+
+  // Roof Gable Panels (Angled Box halves)
+  const roofMat = new THREE.MeshStandardMaterial({
+    color: roofColor,
+    roughness: 0.8,
+  });
+  const roofLeft = new THREE.Mesh(new THREE.BoxGeometry(2.9, 0.25, 4.6), roofMat);
+  roofLeft.position.set(-1.15, 3.9, 0);
+  roofLeft.rotation.z = Math.PI * 0.17;
+  roofLeft.castShadow = true;
+  cottage.add(roofLeft);
+
+  const roofRight = new THREE.Mesh(new THREE.BoxGeometry(2.9, 0.25, 4.6), roofMat);
+  roofRight.position.set(1.15, 3.9, 0);
+  roofRight.rotation.z = -Math.PI * 0.17;
+  roofRight.castShadow = true;
+  cottage.add(roofRight);
+
+  // Gable end triangles
+  const gableMat = new THREE.MeshStandardMaterial({ color: 0x4a2e18, roughness: 0.8 });
+  const gableFront = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 2.3, 1.5, 3), gableMat);
+  gableFront.position.set(0, 3.85, 2.0);
+  gableFront.rotation.y = Math.PI;
+  cottage.add(gableFront);
+
+  const gableBack = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 2.3, 1.5, 3), gableMat);
+  gableBack.position.set(0, 3.85, -2.0);
+  cottage.add(gableBack);
+
+  // Brick Chimney
+  const chimneyMat = new THREE.MeshStandardMaterial({ color: 0x7c3a2a, roughness: 0.9 });
+  const chimney = new THREE.Mesh(new THREE.BoxGeometry(0.7, 3.8, 0.7), chimneyMat);
+  chimney.position.set(1.6, 2.8, -1.2);
+  chimney.castShadow = true;
+  cottage.add(chimney);
+
+  const chimneyCap = new THREE.Mesh(
+    new THREE.BoxGeometry(0.9, 0.15, 0.9),
+    new THREE.MeshStandardMaterial({ color: 0x3d4852, roughness: 0.8 })
+  );
+  chimneyCap.position.set(1.6, 4.75, -1.2);
+  cottage.add(chimneyCap);
+
+  // Wooden Front Door
+  const door = new THREE.Mesh(new THREE.BoxGeometry(0.95, 1.9, 0.12), woodMat);
+  door.position.set(0, 0.95, 2.03);
+  cottage.add(door);
+
+  // Front Windows with soft warm interior amber glow
+  const windowGlowMat = new THREE.MeshBasicMaterial({ color: 0xfcd34d });
+  const winFrameMat = new THREE.MeshStandardMaterial({ color: 0x3e2714, roughness: 0.7 });
+
+  const win1 = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.7, 0.08), windowGlowMat);
+  win1.position.set(-1.3, 1.8, 2.02);
+  cottage.add(win1);
+
+  const win1Frame = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.8, 0.12), winFrameMat);
+  win1Frame.position.set(-1.3, 1.8, 2.0);
+  cottage.add(win1Frame);
+
+  const win2 = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.7, 0.08), windowGlowMat);
+  win2.position.set(1.3, 1.8, 2.02);
+  cottage.add(win2);
+
+  const win2Frame = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.8, 0.12), winFrameMat);
+  win2Frame.position.set(1.3, 1.8, 2.0);
+  cottage.add(win2Frame);
+
+  return cottage;
+}
+
+export function createTownFountain(): { group: THREE.Group; update: (dt: number) => void } {
+  const group = new THREE.Group();
+
+  const stoneMat = new THREE.MeshStandardMaterial({
+    color: 0xc4beb3,
+    roughness: 0.8,
+  });
+
+  // Main Tier Basin Outer
+  const outerBasin = new THREE.Mesh(new THREE.CylinderGeometry(2.9, 3.1, 0.65, 16), stoneMat);
+  outerBasin.position.y = 0.32;
+  outerBasin.castShadow = true;
+  outerBasin.receiveShadow = true;
+  group.add(outerBasin);
+
+  // Lower Basin Water Surface
+  const waterMat = new THREE.MeshStandardMaterial({
+    color: 0x38bdf8,
+    roughness: 0.12,
+    metalness: 0.25,
+    transparent: true,
+    opacity: 0.82,
+  });
+  const lowerWater = new THREE.Mesh(new THREE.CylinderGeometry(2.6, 2.6, 0.08, 16), waterMat);
+  lowerWater.position.y = 0.55;
+  group.add(lowerWater);
+
+  // Center Pedestal Column
+  const pedestal = new THREE.Mesh(new THREE.CylinderGeometry(0.65, 0.85, 1.8, 12), stoneMat);
+  pedestal.position.y = 1.2;
+  pedestal.castShadow = true;
+  group.add(pedestal);
+
+  // Upper Tier Small Basin
+  const upperBasin = new THREE.Mesh(new THREE.CylinderGeometry(1.3, 1.45, 0.4, 12), stoneMat);
+  upperBasin.position.y = 2.0;
+  upperBasin.castShadow = true;
+  group.add(upperBasin);
+
+  // Upper Water
+  const upperWater = new THREE.Mesh(new THREE.CylinderGeometry(1.15, 1.15, 0.06, 12), waterMat);
+  upperWater.position.y = 2.2;
+  group.add(upperWater);
+
+  // Center Spire & Spray Jet
+  const spire = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.8, 8), stoneMat);
+  spire.position.y = 2.5;
+  group.add(spire);
+
+  const jetMat = new THREE.MeshBasicMaterial({
+    color: 0xe0f2fe,
+    transparent: true,
+    opacity: 0.75,
+  });
+  const sprayJet = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.9, 8), jetMat);
+  sprayJet.position.y = 3.1;
+  group.add(sprayJet);
+
+  let time = 0;
+  return {
+    group,
+    update: (dt: number) => {
+      time += dt;
+      lowerWater.position.y = 0.55 + Math.sin(time * 2.5) * 0.015;
+      sprayJet.scale.y = 0.85 + Math.sin(time * 5.0) * 0.15;
+      sprayJet.rotation.y += dt * 1.5;
+    },
+  };
+}
+
+export function createLanternPost(): THREE.Group {
+  const group = new THREE.Group();
+
+  const ironMat = new THREE.MeshStandardMaterial({
+    color: 0x1e293b,
+    roughness: 0.6,
+    metalness: 0.75,
+  });
+
+  // Base
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.35, 0.25, 8), ironMat);
+  base.position.y = 0.125;
+  group.add(base);
+
+  // Main Pole
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 3.0, 8), ironMat);
+  pole.position.y = 1.6;
+  pole.castShadow = true;
+  group.add(pole);
+
+  // Cross arm
+  const arm = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.08, 0.08), ironMat);
+  arm.position.set(0.22, 3.0, 0);
+  group.add(arm);
+
+  // Hanging Lantern Housing
+  const lanternFrame = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.42, 0.3), ironMat);
+  lanternFrame.position.set(0.45, 2.75, 0);
+  group.add(lanternFrame);
+
+  // Glowing Lantern Glass Core
+  const glowMat = new THREE.MeshBasicMaterial({ color: 0xfef08a });
+  const lanternGlass = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.34, 0.24), glowMat);
+  lanternGlass.position.set(0.45, 2.75, 0);
+  group.add(lanternGlass);
+
+  return group;
+}
+
+export function createPlanterBox(): THREE.Group {
+  const group = new THREE.Group();
+
+  const woodMat = new THREE.MeshStandardMaterial({
+    color: 0x4a2e18,
+    roughness: 0.8,
+  });
+  const box = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.45, 0.55), woodMat);
+  box.position.y = 0.225;
+  box.castShadow = true;
+  group.add(box);
+
+  // Soil
+  const soilMat = new THREE.MeshStandardMaterial({ color: 0x24180d, roughness: 0.95 });
+  const soil = new THREE.Mesh(new THREE.BoxGeometry(1.48, 0.08, 0.45), soilMat);
+  soil.position.y = 0.42;
+  group.add(soil);
+
+  // Colorful Little Flowers
+  const petalColors = [0xef4444, 0xa855f7, 0xfacc15, 0xec4899, 0x38bdf8];
+  const stemMat = new THREE.MeshStandardMaterial({ color: 0x166534, roughness: 0.7 });
+  for (let i = 0; i < 7; i++) {
+    const ox = -0.55 + i * 0.18 + (Math.random() - 0.5) * 0.06;
+    const oz = (Math.random() - 0.5) * 0.25;
+    const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.2, 4), stemMat);
+    stem.position.set(ox, 0.5, oz);
+    group.add(stem);
+
+    const blossomMat = new THREE.MeshBasicMaterial({ color: petalColors[i % petalColors.length] });
+    const blossom = new THREE.Mesh(new THREE.DodecahedronGeometry(0.06, 0), blossomMat);
+    blossom.position.set(ox, 0.6, oz);
+    group.add(blossom);
+  }
+
+  return group;
+}
+
+export function createAstrolabeGazebo(): { group: THREE.Group; update: (dt: number) => void } {
+  const group = new THREE.Group();
+
+  const stoneMat = new THREE.MeshStandardMaterial({
+    color: 0xd1cbbe,
+    roughness: 0.75,
+  });
+
+  // Two-tiered Circular Plinth
+  const plinthLower = new THREE.Mesh(new THREE.CylinderGeometry(4.4, 4.6, 0.35, 16), stoneMat);
+  plinthLower.position.y = 0.175;
+  plinthLower.receiveShadow = true;
+  group.add(plinthLower);
+
+  const plinthUpper = new THREE.Mesh(new THREE.CylinderGeometry(3.8, 4.0, 0.3, 16), stoneMat);
+  plinthUpper.position.y = 0.48;
+  plinthUpper.receiveShadow = true;
+  group.add(plinthUpper);
+
+  // 8 Classical Pillars
+  const pillarGeo = new THREE.CylinderGeometry(0.18, 0.22, 3.6, 8);
+  const pillarRadius = 3.2;
+  for (let i = 0; i < 8; i++) {
+    const angle = (i / 8) * Math.PI * 2;
+    const pillar = new THREE.Mesh(pillarGeo, stoneMat);
+    pillar.position.set(Math.cos(angle) * pillarRadius, 2.3, Math.sin(angle) * pillarRadius);
+    pillar.castShadow = true;
+    group.add(pillar);
+  }
+
+  // Architrave Ring
+  const architrave = new THREE.Mesh(
+    new THREE.TorusGeometry(3.2, 0.22, 8, 24),
+    stoneMat
+  );
+  architrave.position.y = 4.15;
+  architrave.rotation.x = Math.PI * 0.5;
+  group.add(architrave);
+
+  // Domed Patina Canopy
+  const domeMat = new THREE.MeshStandardMaterial({
+    color: 0x367a74, // Weathered copper patina
+    roughness: 0.65,
+    metalness: 0.3,
+  });
+  const dome = new THREE.Mesh(
+    new THREE.SphereGeometry(3.4, 16, 8, 0, Math.PI * 2, 0, Math.PI * 0.36),
+    domeMat
+  );
+  dome.position.y = 4.1;
+  dome.castShadow = true;
+  group.add(dome);
+
+  // Spire on top of dome
+  const domeSpire = new THREE.Mesh(
+    new THREE.ConeGeometry(0.15, 1.2, 8),
+    new THREE.MeshStandardMaterial({ color: 0xf59e0b, metalness: 0.8, roughness: 0.3 })
+  );
+  domeSpire.position.y = 5.8;
+  group.add(domeSpire);
+
+  // Center Astrolabe Orrery (Floating rotating concentric rings)
+  const orreryGroup = new THREE.Group();
+  orreryGroup.position.set(0, 2.8, 0);
+  group.add(orreryGroup);
+
+  const brassMat = new THREE.MeshStandardMaterial({
+    color: 0xf59e0b,
+    metalness: 0.85,
+    roughness: 0.3,
+  });
+  const ring1 = new THREE.Mesh(new THREE.TorusGeometry(1.0, 0.04, 6, 24), brassMat);
+  orreryGroup.add(ring1);
+
+  const ring2 = new THREE.Mesh(new THREE.TorusGeometry(0.72, 0.035, 6, 20), brassMat);
+  ring2.rotation.x = Math.PI * 0.35;
+  orreryGroup.add(ring2);
+
+  const ring3 = new THREE.Mesh(new THREE.TorusGeometry(0.48, 0.03, 6, 16), brassMat);
+  ring3.rotation.y = Math.PI * 0.45;
+  orreryGroup.add(ring3);
+
+  // Central Celestial Core
+  const coreMat = new THREE.MeshBasicMaterial({ color: 0x60a5fa });
+  const core = new THREE.Mesh(new THREE.OctahedronGeometry(0.2, 0), coreMat);
+  orreryGroup.add(core);
+
+  return {
+    group,
+    update: (dt: number) => {
+      ring1.rotation.y += dt * 0.45;
+      ring2.rotation.x += dt * 0.6;
+      ring3.rotation.z += dt * 0.75;
+      core.rotation.y += dt * 1.2;
+    },
+  };
+}
+
+export function createArchmageAurelius(): { group: THREE.Group; update: (dt: number) => void } {
+  const group = new THREE.Group();
+
+  // Indigo and Gold Robe
+  const robeMat = new THREE.MeshStandardMaterial({
+    color: 0x1e1b4b,
+    roughness: 0.7,
+  });
+  const goldTrimMat = new THREE.MeshStandardMaterial({
+    color: 0xf59e0b,
+    metalness: 0.7,
+    roughness: 0.3,
+  });
+
+  const robe = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.6, 1.6, 10), robeMat);
+  robe.position.y = 0.8;
+  robe.castShadow = true;
+  group.add(robe);
+
+  const robeTrim = new THREE.Mesh(new THREE.TorusGeometry(0.61, 0.04, 6, 16), goldTrimMat);
+  robeTrim.position.y = 0.04;
+  robeTrim.rotation.x = Math.PI * 0.5;
+  group.add(robeTrim);
+
+  // Mantle / Shoulder Capelet
+  const mantle = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.45, 0.35, 10), goldTrimMat);
+  mantle.position.y = 1.5;
+  group.add(mantle);
+
+  // Head
+  const skinMat = new THREE.MeshStandardMaterial({ color: 0xf5d0b5, roughness: 0.8 });
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), skinMat);
+  head.position.y = 1.82;
+  group.add(head);
+
+  // Braided White Beard
+  const beardMat = new THREE.MeshStandardMaterial({ color: 0xf1f5f9, roughness: 0.85 });
+  const beard = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.65, 8), beardMat);
+  beard.position.set(0, 1.5, 0.15);
+  beard.rotation.x = -Math.PI * 0.12;
+  group.add(beard);
+
+  // Wizard Hat
+  const hatBrim = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, 0.04, 16), robeMat);
+  hatBrim.position.y = 1.98;
+  group.add(hatBrim);
+
+  const hatBand = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.34, 0.1, 12), goldTrimMat);
+  hatBand.position.y = 2.04;
+  group.add(hatBand);
+
+  const hatCone = new THREE.Mesh(new THREE.ConeGeometry(0.3, 0.9, 10), robeMat);
+  hatCone.position.set(0, 2.45, -0.06);
+  hatCone.rotation.x = -Math.PI * 0.08;
+  group.add(hatCone);
+
+  // Astrolabe Staff in right hand
+  const staffMat = new THREE.MeshStandardMaterial({ color: 0x451a03, roughness: 0.8 });
+  const staff = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 2.3, 6), staffMat);
+  staff.position.set(0.55, 1.15, 0.2);
+  group.add(staff);
+
+  // Staff Head Crystal & Astrolabe Ring
+  const crystalMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
+  const staffCrystal = new THREE.Mesh(new THREE.DodecahedronGeometry(0.14, 0), crystalMat);
+  staffCrystal.position.set(0.55, 2.3, 0.2);
+  group.add(staffCrystal);
+
+  const staffRing = new THREE.Mesh(
+    new THREE.TorusGeometry(0.24, 0.025, 6, 16),
+    goldTrimMat
+  );
+  staffRing.position.set(0.55, 2.3, 0.2);
+  group.add(staffRing);
+
+  let time = 0;
+  return {
+    group,
+    update: (dt: number) => {
+      time += dt;
+      // Gentle breathing idle
+      robe.scale.y = 1.0 + Math.sin(time * 2.0) * 0.02;
+      staffCrystal.rotation.y += dt * 1.5;
+      staffRing.rotation.z += dt * 2.0;
+    },
+  };
+}
+
+export function createTownsperson(
+  role: 'blacksmith' | 'herbalist' | 'scout'
+): { group: THREE.Group; update: (dt: number) => void } {
+  const group = new THREE.Group();
+
+  const skinMat = new THREE.MeshStandardMaterial({ color: 0xf1c29b, roughness: 0.8 });
+
+  if (role === 'blacksmith') {
+    // Theron the Blacksmith
+    const apronMat = new THREE.MeshStandardMaterial({ color: 0x5c3317, roughness: 0.85 });
+    const shirtMat = new THREE.MeshStandardMaterial({ color: 0xdfd3be, roughness: 0.7 });
+
+    // Torso
+    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.75, 0.4), shirtMat);
+    torso.position.y = 1.05;
+    torso.castShadow = true;
+    group.add(torso);
+
+    // Leather Apron
+    const apron = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.7, 0.1), apronMat);
+    apron.position.set(0, 0.95, 0.2);
+    group.add(apron);
+
+    // Head
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 8), skinMat);
+    head.position.y = 1.6;
+    group.add(head);
+
+    // Hammer in hand
+    const hammer = new THREE.Mesh(
+      new THREE.BoxGeometry(0.18, 0.12, 0.12),
+      new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.7 })
+    );
+    hammer.position.set(0.45, 0.8, 0.2);
+    group.add(hammer);
+
+    // Stone Anvil beside him
+    const anvilMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, metalness: 0.8, roughness: 0.4 });
+    const anvil = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.6, 0.8), anvilMat);
+    anvil.position.set(0.7, 0.3, 0.3);
+    group.add(anvil);
+
+    // Glowing hot iron billet
+    const hotIronMat = new THREE.MeshBasicMaterial({ color: 0xff5722 });
+    const hotIron = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.08, 0.35), hotIronMat);
+    hotIron.position.set(0.7, 0.64, 0.3);
+    group.add(hotIron);
+  } else if (role === 'herbalist') {
+    // Lyra the Herbalist
+    const dressMat = new THREE.MeshStandardMaterial({ color: 0x2d6a4f, roughness: 0.75 });
+    const apronMat = new THREE.MeshStandardMaterial({ color: 0xfef3c7, roughness: 0.8 });
+
+    // Dress
+    const dress = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.5, 1.3, 8), dressMat);
+    dress.position.y = 0.65;
+    dress.castShadow = true;
+    group.add(dress);
+
+    const apron = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.6, 0.08), apronMat);
+    apron.position.set(0, 0.8, 0.22);
+    group.add(apron);
+
+    // Head
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 8), skinMat);
+    head.position.y = 1.45;
+    group.add(head);
+
+    // Flower circlet
+    const circlet = new THREE.Mesh(
+      new THREE.TorusGeometry(0.19, 0.03, 6, 12),
+      new THREE.MeshBasicMaterial({ color: 0xa855f7 })
+    );
+    circlet.position.y = 1.55;
+    circlet.rotation.x = Math.PI * 0.5;
+    group.add(circlet);
+
+    // Wicker herb basket
+    const basketMat = new THREE.MeshStandardMaterial({ color: 0x854d0e, roughness: 0.85 });
+    const basket = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.25, 0.25), basketMat);
+    basket.position.set(0.38, 0.65, 0.15);
+    group.add(basket);
+  } else {
+    // Eldrin the Scout
+    const leatherMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.8 });
+    const cloakMat = new THREE.MeshStandardMaterial({ color: 0x14532d, roughness: 0.75 });
+
+    // Tunic
+    const tunic = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.75, 0.35), leatherMat);
+    tunic.position.y = 1.0;
+    tunic.castShadow = true;
+    group.add(tunic);
+
+    // Cloak
+    const cloak = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.9, 0.1), cloakMat);
+    cloak.position.set(0, 0.9, -0.2);
+    group.add(cloak);
+
+    // Head
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.19, 8, 8), skinMat);
+    head.position.y = 1.52;
+    group.add(head);
+
+    // Traveler staff
+    const staffMat = new THREE.MeshStandardMaterial({ color: 0x3f2e1a, roughness: 0.8 });
+    const staff = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 1.8, 6), staffMat);
+    staff.position.set(0.35, 0.9, 0.25);
+    group.add(staff);
+  }
+
+  let time = Math.random() * 5.0;
+  return {
+    group,
+    update: (dt: number) => {
+      time += dt;
+      group.position.y = Math.sin(time * 2.0) * 0.02;
+    },
+  };
+}
+
+export interface VillageObstacle {
+  x: number;
+  z: number;
+  radius: number;
+}
+
+export interface InteractiveNpcEntity {
+  id: string;
+  name: string;
+  title: string;
+  role: 'aurelius' | 'blacksmith' | 'herbalist' | 'scout';
+  position: THREE.Vector3;
+  interactionRadius: number;
+  meshGroup: THREE.Group;
+}
+
+export interface SolsticeHavenBundle {
+  group: THREE.Group;
+  obstacles: VillageObstacle[];
+  interactiveNpcs: InteractiveNpcEntity[];
+  update: (dt: number) => void;
+}
+
+export function createSolsticeHavenVillage(): SolsticeHavenBundle {
+  const group = new THREE.Group();
+  const updaters: ((dt: number) => void)[] = [];
+  const obstacles: VillageObstacle[] = [];
+  const interactiveNpcs: InteractiveNpcEntity[] = [];
+
+  // 1. Central Tiered Stone Fountain
+  const fountain = createTownFountain();
+  fountain.group.position.set(0, 0, 0);
+  group.add(fountain.group);
+  updaters.push(fountain.update);
+  obstacles.push({ x: 0, z: 0, radius: 2.4 });
+
+  // 2. Four Stylized Cottages framing the village square
+  const cottagePlacements = [
+    { x: -14.5, z: -8.5, rot: Math.PI * 0.16, variant: 0 }, // Blacksmith forge cottage
+    { x: 14.5, z: -8.5, rot: -Math.PI * 0.22, variant: 1 }, // Herbalist apothecary cottage
+    { x: -14.5, z: 12.0, rot: Math.PI * 0.38, variant: 2 },  // Adventurer lodge
+    { x: 14.5, z: 12.0, rot: -Math.PI * 0.34, variant: 3 },  // Valley farm cottage
+  ];
+
+  cottagePlacements.forEach((cp) => {
+    const cottage = createVillageCottage(cp.variant);
+    cottage.position.set(cp.x, getTerrainHeight(cp.x, cp.z), cp.z);
+    cottage.rotation.y = cp.rot;
+    group.add(cottage);
+    // Bounding circle for collision
+    obstacles.push({ x: cp.x, z: cp.z, radius: 3.2 });
+  });
+
+  // 3. Four Lantern Posts
+  const lanternPositions = [
+    [-6.5, -6.5],
+    [6.5, -6.5],
+    [-6.5, 6.5],
+    [6.5, 6.5],
+  ];
+  lanternPositions.forEach(([lx, lz]) => {
+    const post = createLanternPost();
+    post.position.set(lx, getTerrainHeight(lx, lz), lz);
+    group.add(post);
+  });
+
+  // 4. Four Flower Planter Boxes
+  const planterPositions = [
+    [-4.5, 0, Math.PI * 0.5],
+    [4.5, 0, -Math.PI * 0.5],
+    [0, -4.5, 0],
+    [0, 4.5, Math.PI],
+  ];
+  planterPositions.forEach(([px, pz, rot]) => {
+    const planter = createPlanterBox();
+    planter.position.set(px, getTerrainHeight(px, pz), pz);
+    planter.rotation.y = rot;
+    group.add(planter);
+  });
+
+  // 5. Archmage's Astrolabe Gazebo (Northern terrace of the plaza)
+  const gazebo = createAstrolabeGazebo();
+  const gazeboPos = new THREE.Vector3(0, getTerrainHeight(0, -13.0), -13.0);
+  gazebo.group.position.copy(gazeboPos);
+  group.add(gazebo.group);
+  updaters.push(gazebo.update);
+  obstacles.push({ x: gazeboPos.x, z: gazeboPos.z, radius: 3.8 });
+
+  // 6. Archmage Aurelius (Stationed at the Gazebo entrance)
+  const archmage = createArchmageAurelius();
+  const aureliusPos = new THREE.Vector3(0, gazeboPos.y + 0.48, -10.8);
+  archmage.group.position.copy(aureliusPos);
+  group.add(archmage.group);
+  updaters.push(archmage.update);
+
+  interactiveNpcs.push({
+    id: 'aurelius',
+    name: 'Archmage Aurelius',
+    title: 'Guardian of the Astrolabe & Guide Wizard',
+    role: 'aurelius',
+    position: aureliusPos,
+    interactionRadius: 4.8,
+    meshGroup: archmage.group,
+  });
+
+  // 7. Townsfolk NPCs
+  // Theron the Blacksmith
+  const blacksmith = createTownsperson('blacksmith');
+  const blacksmithPos = new THREE.Vector3(-8.5, getTerrainHeight(-8.5, -5.5), -5.5);
+  blacksmith.group.position.copy(blacksmithPos);
+  blacksmith.group.rotation.y = Math.PI * 0.25;
+  group.add(blacksmith.group);
+  updaters.push(blacksmith.update);
+
+  interactiveNpcs.push({
+    id: 'blacksmith',
+    name: 'Theron the Smith',
+    title: 'Weaponsmith & Ward Refiner',
+    role: 'blacksmith',
+    position: blacksmithPos,
+    interactionRadius: 3.8,
+    meshGroup: blacksmith.group,
+  });
+
+  // Lyra the Herbalist
+  const herbalist = createTownsperson('herbalist');
+  const herbalistPos = new THREE.Vector3(8.5, getTerrainHeight(8.5, -5.5), -5.5);
+  herbalist.group.position.copy(herbalistPos);
+  herbalist.group.rotation.y = -Math.PI * 0.3;
+  group.add(herbalist.group);
+  updaters.push(herbalist.update);
+
+  interactiveNpcs.push({
+    id: 'herbalist',
+    name: 'Lyra the Herbalist',
+    title: 'Flora Botanist & Potion Brewer',
+    role: 'herbalist',
+    position: herbalistPos,
+    interactionRadius: 3.8,
+    meshGroup: herbalist.group,
+  });
+
+  // Eldrin the Scout
+  const scout = createTownsperson('scout');
+  const scoutPos = new THREE.Vector3(5.5, getTerrainHeight(5.5, 7.5), 7.5);
+  scout.group.position.copy(scoutPos);
+  scout.group.rotation.y = Math.PI * 0.9;
+  group.add(scout.group);
+  updaters.push(scout.update);
+
+  interactiveNpcs.push({
+    id: 'scout',
+    name: 'Eldrin the Scout',
+    title: 'Frontier Ranger & Valley Trailhead Guide',
+    role: 'scout',
+    position: scoutPos,
+    interactionRadius: 3.8,
+    meshGroup: scout.group,
+  });
+
+  return {
+    group,
+    obstacles,
+    interactiveNpcs,
+    update: (dt: number) => {
+      for (const u of updaters) {
+        u(dt);
+      }
+    },
+  };
+}
