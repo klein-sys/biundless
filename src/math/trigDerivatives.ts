@@ -309,3 +309,91 @@ export function buildWorkedExample(
   };
 }
 
+export interface WavePlotData {
+  readonly pathData: string;
+  readonly tangentLine: { x1: number; y1: number; x2: number; y2: number };
+  readonly contactPoint: { x: number; y: number };
+  readonly axisY: number;
+  readonly width: number;
+  readonly height: number;
+  readonly ticks: Array<{ x: number; label: string }>;
+}
+
+export function generateWavePlotData(
+  fn: TrigFunctionId,
+  theta: number,
+  width: number = 360,
+  height: number = 130,
+): WavePlotData {
+  const padX = 24;
+  const plotW = width - padX * 2;
+  const axisY = height / 2;
+  const yScale = 22;
+  const maxClamp = 2.4;
+
+  const samples = 48;
+  const points: Array<[number, number]> = [];
+
+  for (let i = 0; i <= samples; i++) {
+    const t = (i / samples) * Math.PI * 2;
+    const x = padX + (i / samples) * plotW;
+    const val = evaluateTrig(fn, t).value;
+    const clamped = Math.max(-maxClamp, Math.min(maxClamp, val));
+    const y = axisY - clamped * yScale;
+    points.push([x, y]);
+  }
+
+  let pathData = '';
+  for (let i = 0; i < points.length; i++) {
+    const [px, py] = points[i];
+    if (i === 0) pathData += `M ${px.toFixed(1)} ${py.toFixed(1)}`;
+    else pathData += ` L ${px.toFixed(1)} ${py.toFixed(1)}`;
+  }
+
+  const normTheta = ((theta % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+  const cx = padX + (normTheta / (Math.PI * 2)) * plotW;
+  const cVal = evaluateTrig(fn, normTheta).value;
+  const cy = axisY - Math.max(-maxClamp, Math.min(maxClamp, cVal)) * yScale;
+
+  const slope = evaluateExactDerivative(fn, normTheta).value;
+  const dPixelSlope = -slope * yScale * ((Math.PI * 2) / plotW);
+  const tanAngle = Math.atan(dPixelSlope);
+  const span = 42;
+
+  const x1 = cx - Math.cos(tanAngle) * span;
+  const y1 = cy - Math.sin(tanAngle) * span;
+  const x2 = cx + Math.cos(tanAngle) * span;
+  const y2 = cy + Math.sin(tanAngle) * span;
+
+  const tickFractions = [
+    { frac: 0, label: '0' },
+    { frac: 0.25, label: 'π/2' },
+    { frac: 0.5, label: 'π' },
+    { frac: 0.75, label: '3π/2' },
+    { frac: 1.0, label: '2π' },
+  ];
+
+  const ticks = tickFractions.map(({ frac, label }) => ({
+    x: padX + frac * plotW,
+    label,
+  }));
+
+  return {
+    pathData,
+    tangentLine: {
+      x1: Number(x1.toFixed(1)),
+      y1: Number(y1.toFixed(1)),
+      x2: Number(x2.toFixed(1)),
+      y2: Number(y2.toFixed(1)),
+    },
+    contactPoint: {
+      x: Number(cx.toFixed(1)),
+      y: Number(cy.toFixed(1)),
+    },
+    axisY,
+    width,
+    height,
+    ticks,
+  };
+}
+

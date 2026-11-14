@@ -770,4 +770,28 @@ describe('GameUI Title Screen Sidebar & In-Sidebar Settings Switch', () => {
     handleEsc();
     expect(ui.getTitleView()).toBe('main');
   });
+
+  it('manages boss cutscene overlay state, banner data, and finish callbacks', () => {
+    const ui = new GameUI(root as any, handlers, DEFAULT_SETTINGS);
+
+    expect(ui.isCutsceneActive()).toBe(false);
+
+    let finished = false;
+    ui.showBossCutscene('witch', () => {
+      finished = true;
+    });
+
+    expect(ui.isCutsceneActive()).toBe(true);
+
+    const nameEl = root.querySelector('#cutscene-boss-name')!;
+    expect(nameEl.textContent).toBe('VESPERA');
+
+    const bannerEl = root.querySelector('#boss-cutscene-banner')!;
+    expect(bannerEl).not.toBeNull();
+
+    // Hide cutscene (skip or finished)
+    ui.hideBossCutscene();
+    expect(ui.isCutsceneActive()).toBe(false);
+    expect(finished).toBe(true);
+  });
 });

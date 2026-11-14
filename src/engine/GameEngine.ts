@@ -150,6 +150,13 @@ export class GameEngine {
   private smoothedFrameMs = 16.6;
   private uiUpdateCooldown = 0;
 
+  // Boss Encounter Cinematic Cutscenes
+  private isCutscenePlaying = false;
+  private cutsceneTime = 0;
+  private readonly cutsceneDuration = 3.8;
+  private cutsceneBossId: BossId | null = null;
+  private readonly seenBossCutscenes = new Set<BossId>();
+
   constructor(canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
     this.settings = loadSettings();
 
@@ -290,6 +297,10 @@ export class GameEngine {
         this.syncPauseState('dev');
       },
       onTogglePause: () => {
+        if (this.isCutscenePlaying) {
+          this.endBossCutscene();
+          return;
+        }
         if (this.ui.isWorkedExampleOpen()) {
           this.ui.closeWorkedExample();
           this.input.setUiBlocked(!this.started);
@@ -321,6 +332,7 @@ export class GameEngine {
         if (isNewGame) {
           this.progression = resetProgression();
           applyProgressionToPlayer(this.player, computeEffectiveStats(this.progression));
+          this.seenBossCutscenes.clear();
           this.warpToLandmark('hub');
         }
         this.started = true;
@@ -547,6 +559,9 @@ export class GameEngine {
     this.clearCombatEntities();
 
     if (target === 'hub') {
+      if (this.isCutscenePlaying) {
+        this.endBossCutscene();
+      }
       this.activeBossId = null;
       this.tangentArc.group.visible = false;
       this.cameraCtrl.lockedOn = false;
@@ -564,13 +579,16 @@ export class GameEngine {
         });
         Object.assign(boss, fresh);
         this.bossRigs[target].root.scale.setScalar(1);
+      }
+      this.audio.playBossCue();
+      if (!this.seenBossCutscenes.has(target)) {
+        this.triggerBossCutscene(target);
       } else {
         engageBoss(boss);
+        this.tangentArc.group.visible = true;
+        this.cameraCtrl.lockedOn = true;
+        this.ui.showToast(`WARPED: ${lm.name.toUpperCase()}`);
       }
-      this.tangentArc.group.visible = true;
-      this.cameraCtrl.lockedOn = true;
-      this.audio.playBossCue();
-      this.ui.showToast(`WARPED: ${lm.name.toUpperCase()}`);
     }
   }
 
@@ -616,6 +634,10 @@ export class GameEngine {
 
     const modalOpen = this.paused || this.ui.isModalOpen();
     if (!modalOpen && this.started) {
+      if (this.isCutscenePlaying) {
+        this.stepCutscene(renderedDt);
+        return;
+      }
       this.stepSimulation(renderedDt);
     } else {
       this.totalTime += renderedDt;
@@ -645,6 +667,115 @@ export class GameEngine {
     this.keyLight.target.position.set(this.playerPos.x, this.playerPos.y, this.playerPos.z);
     this.keyLight.target.updateMatrixWorld();
 
+    this.renderer.info.reset();
+    if (this.bloomEnabled) {
+      this.composer.render();
+    } else {
+      this.renderer.render(this.scene, this.camera);
+    }
+  }
+
+  public triggerBossCutscene(bossId: BossId): void {
+    this.isCutscenePlaying = true;
+    this.cutsceneTime = 0;
+    this.cutsceneBossId = bossId;
+    this.seenBossCutscenes.add(bossId);
+    this.activeBossId = bossId;
+    this.cameraCtrl.lockedOn = false;
+
+    // Face player toward boss
+    const boss = this.bossRuntimes[bossId];
+    this.playerYaw = Math.atan2(boss.homeX - this.playerPos.x, boss.homeZ - this.playerPos.z);
+    this.playerRig.root.rotation.y = this.playerYaw;
+
+    this.audio.playBossCue();
+    this.ui.showBossCutscene(bossId, () => {
+      this.endBossCutscene();
+    });
+  }
+
+  public endBossCutscene(): void {
+    if (!this.isCutscenePlaying) return;
+    this.isCutscenePlaying = false;
+    this.ui.hideBossCutscene();
+    if (this.cutsceneBossId) {
+      const boss = this.bossRuntimes[this.cutsceneBossId];
+      engageBoss(boss);
+      this.tangentArc.group.visible = true;
+      this.cameraCtrl.lockedOn = true;
+      this.cameraCtrl.resetSmoothing(this.playerPos, this.playerYaw);
+      this.ui.showToast(`ENGAGED: ${BOSS_CONFIGS[this.cutsceneBossId].name.toUpperCase()}`);
+    }
+  }
+
+  private stepCutscene(dt: number): void {
+    this.totalTime += dt;
+    this.stepEnvironmentVisuals();
+
+    if (!this.cutsceneBossId) {
+      this.endBossCutscene();
+      return;
+    }
+
+    const nowSec = performance.now() / 1000;
+    if (
+      this.input.buffer.consume('jump', nowSec) ||
+      this.input.buffer.consume('attack', nowSec) ||
+      this.input.buffer.consume('castSigil', nowSec)
+    ) {
+      this.endBossCutscene();
+      return;
+    }
+
+    this.cutsceneTime += dt;
+    if (this.cutsceneTime >= this.cutsceneDuration) {
+      this.endBossCutscene();
+      return;
+    }
+
+    const boss = this.bossRuntimes[this.cutsceneBossId];
+    const bossRig = this.bossRigs[this.cutsceneBossId];
+
+    // Smooth cubic ease: 0 to 1
+    const t = Math.min(1, this.cutsceneTime / this.cutsceneDuration);
+    const smoothT = t * t * (3 - 2 * t);
+
+    // Sweeping cinematic camera arc focusing on the majestic boss and sanctuary
+    const camAngle = this.playerYaw + 0.35 + smoothT * 1.05;
+    const camDist = 14.5 - smoothT * 4.0;
+    const camY = boss.homeY + 1.2 + smoothT * 2.5;
+    const camX = boss.homeX + Math.sin(camAngle) * camDist;
+    const camZ = boss.homeZ + Math.cos(camAngle) * camDist;
+
+    this.camera.position.set(camX, camY, camZ);
+    this.camera.lookAt(boss.homeX, boss.homeY + 2.5, boss.homeZ);
+
+    // Roar/surge animation for boss
+    bossRig.root.position.set(
+      boss.homeX,
+      boss.homeY + Math.sin(this.cutsceneTime * 3) * 0.25,
+      boss.homeZ,
+    );
+    bossRig.root.lookAt(this.playerPos.x, boss.homeY, this.playerPos.z);
+    bossRig.wardMesh.visible = true;
+    bossRig.coreMesh.scale.setScalar(1.2 + Math.sin(this.cutsceneTime * 8) * 0.3);
+
+    if (bossRig.wingLeft && bossRig.wingRight) {
+      bossRig.wingLeft.rotation.z = 0.85 + Math.sin(this.cutsceneTime * 6) * 0.45;
+      bossRig.wingRight.rotation.z = -0.85 - Math.sin(this.cutsceneTime * 6) * 0.45;
+    }
+    bossRig.orbitParts.forEach((p, idx) => {
+      const a = this.cutsceneTime * 3.5 + (idx * Math.PI * 2) / bossRig.orbitParts.length;
+      p.position.set(Math.cos(a) * 3.4, 2.5 + Math.sin(a * 2) * 0.5, Math.sin(a) * 3.4);
+      p.rotation.y = a;
+    });
+
+    // Shadow light on boss
+    this.keyLight.position.set(boss.homeX + 28, boss.homeY + 48, boss.homeZ - 36);
+    this.keyLight.target.position.set(boss.homeX, boss.homeY, boss.homeZ);
+    this.keyLight.target.updateMatrixWorld();
+
+    // Render
     this.renderer.info.reset();
     if (this.bloomEnabled) {
       this.composer.render();
@@ -998,11 +1129,15 @@ export class GameEngine {
 
     if (closestBossId && closestDist <= BOSS_CONFIGS[closestBossId].territoryRadius) {
       if (this.activeBossId !== closestBossId) {
-        this.activeBossId = closestBossId;
-        const b = this.bossRuntimes[closestBossId];
-        engageBoss(b);
-        this.audio.playBossCue();
-        this.ui.showToast(`ENTERING: ${BOSS_CONFIGS[closestBossId].name.toUpperCase()} TERRITORY`);
+        if (!this.seenBossCutscenes.has(closestBossId)) {
+          this.triggerBossCutscene(closestBossId);
+        } else {
+          this.activeBossId = closestBossId;
+          const b = this.bossRuntimes[closestBossId];
+          engageBoss(b);
+          this.audio.playBossCue();
+          this.ui.showToast(`ENTERING: ${BOSS_CONFIGS[closestBossId].name.toUpperCase()} TERRITORY`);
+        }
       }
     } else if (this.activeBossId) {
       const current = this.bossRuntimes[this.activeBossId];

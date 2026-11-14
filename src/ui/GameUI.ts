@@ -17,6 +17,7 @@ import {
   evaluateExactDerivative,
   evaluateTrig,
   formatThetaPi,
+  generateWavePlotData,
   isCriticalPoint,
   SIGIL_BY_ID,
   type DerivativeSigilId,
@@ -116,6 +117,12 @@ export class GameUI {
   private bossHpFill!: HTMLElement;
   private bossStaggerFill!: HTMLElement;
   private equationRibbon!: HTMLElement;
+
+  private cutsceneOverlay!: HTMLElement;
+  private cutsceneBossName!: HTMLElement;
+  private cutsceneBossTitle!: HTMLElement;
+  private cutsceneBossFormula!: HTMLElement;
+  private cutsceneFinishCb: (() => void) | null = null;
 
   private hudTopLeft!: HTMLElement;
   private hudTopRight!: HTMLElement;
@@ -282,6 +289,19 @@ export class GameUI {
       <div id="settings-modal" class="modal-backdrop hidden"></div>
       <div id="worked-modal" class="modal-backdrop hidden"></div>
       <aside id="title-overlay" class="title-sidebar-overlay"></aside>
+
+      <!-- Cinematic Boss Encounter Cutscene Overlay -->
+      <div id="cutscene-overlay" class="cutscene-overlay hidden">
+        <div class="cutscene-letterbox top"></div>
+        <div class="cutscene-letterbox bottom"></div>
+        <div id="boss-cutscene-banner" class="boss-cutscene-banner">
+          <div class="cutscene-crest">✧ SANCTUARY DOMAIN BREACHED ✧</div>
+          <h1 id="cutscene-boss-name" class="cutscene-boss-name">VESPERA</h1>
+          <div id="cutscene-boss-title" class="cutscene-boss-title">Witch of the Sine Hollow · Sovereign of Phase Harmonics</div>
+          <div id="cutscene-boss-formula" class="cutscene-boss-formula">Active Harmonic: f(θ) = sin(θ)</div>
+          <div class="cutscene-skip-badge">PRESS [SPACE] OR CLICK TO ENGAGE</div>
+        </div>
+      </div>
     `;
 
     this.hpFill = this.root.querySelector('#hp-fill')!;
@@ -335,6 +355,14 @@ export class GameUI {
     this.settingsModal = this.root.querySelector('#settings-modal')!;
     this.workedModal = this.root.querySelector('#worked-modal')!;
     this.titleOverlay = this.root.querySelector('#title-overlay')!;
+
+    this.cutsceneOverlay = this.root.querySelector('#cutscene-overlay')!;
+    this.cutsceneBossName = this.root.querySelector('#cutscene-boss-name')!;
+    this.cutsceneBossTitle = this.root.querySelector('#cutscene-boss-title')!;
+    this.cutsceneBossFormula = this.root.querySelector('#cutscene-boss-formula')!;
+    this.cutsceneOverlay.addEventListener('click', () => {
+      this.hideBossCutscene();
+    });
 
     this.buildSigilPips();
     this.buildRadialWheel();
@@ -1131,43 +1159,134 @@ export class GameUI {
     });
   }
 
+  public isCutsceneActive(): boolean {
+    return !this.cutsceneOverlay.classList.contains('hidden');
+  }
+
+  public showBossCutscene(bossId: BossId, onFinish?: () => void): void {
+    const cfg = BOSS_CONFIGS[bossId];
+    this.cutsceneBossName.textContent = cfg.name.toUpperCase();
+    this.cutsceneBossTitle.textContent = `${cfg.title} · Sovereign of Phase Harmonics`;
+    this.cutsceneBossFormula.textContent = `Harmonic Wave: f(θ) = ${cfg.functions[0]}(θ) & ${cfg.functions[1]}(θ)`;
+    this.cutsceneFinishCb = onFinish ?? null;
+    this.cutsceneOverlay.classList.remove('hidden');
+  }
+
+  public hideBossCutscene(): void {
+    if (!this.cutsceneOverlay.classList.contains('hidden')) {
+      this.cutsceneOverlay.classList.add('hidden');
+      if (this.cutsceneFinishCb) {
+        const cb = this.cutsceneFinishCb;
+        this.cutsceneFinishCb = null;
+        cb();
+      }
+    }
+  }
+
   public showWorkedExample(snapshot: WorkedExampleSnapshot): void {
     this.workedModal.classList.remove('hidden');
     const closeLabel = !this.titleOverlay.classList.contains('hidden')
       ? 'Return to Sanctuary Settings'
       : 'Resume Combat';
+
+    const fnId = snapshot.functionId || 'sin';
+    const theta = typeof snapshot.thetaRadians === 'number' ? snapshot.thetaRadians : Math.PI / 3;
+    const plot = generateWavePlotData(fnId, theta);
+    const slopeSign = (snapshot.evaluatedSlope ?? 0.5) >= 0 ? '+' : '';
+
     this.workedModal.innerHTML = `
-      <div class="adventure-modal worked-card">
-        <div class="title-crest">✧ DIFFERENTIAL CALCULUS ✧</div>
-        <h2 class="worked-title">MATH 101 — LIVE WORKED EXAMPLE</h2>
-        <p class="worked-sub">Computed live from current trigonometric wave state</p>
-        <div class="worked-step">
-          <span class="step-num">Step 1 · Active Boss Function</span>
-          <code>${snapshot.functionFormula}</code>
+      <div class="adventure-modal astrolabe-grimoire">
+        <!-- Celestial Filigree Corners -->
+        <div class="filigree-corner top-left">✧</div>
+        <div class="filigree-corner top-right">✧</div>
+        <div class="filigree-corner bottom-left">✧</div>
+        <div class="filigree-corner bottom-right">✧</div>
+
+        <div class="grimoire-header">
+          <div class="title-crest">✧ CELESTIAL ASTROLABE ✧</div>
+          <h2 class="worked-title">THEOREM OF INSTANTANEOUS RESONANCE</h2>
+          <p class="worked-sub">Live Harmonic Wave State & Differential Slope Calculation</p>
         </div>
-        <div class="worked-step">
-          <span class="step-num">Step 2 · Exact Derivative Rule</span>
-          <code>${snapshot.derivativeRule}</code>
-        </div>
-        <div class="worked-step">
-          <span class="step-num">Step 3 · Evaluated at Angle θ</span>
-          <div class="step-details">
-            <code>θ = ${snapshot.thetaPiLabel}</code>
-            <code>f(θ) = ${snapshot.evaluatedFunction.toFixed(3)}</code>
-            <code>f′(θ) exact = ${snapshot.evaluatedSlope.toFixed(3)}</code>
-            <code>numeric = ${snapshot.numericSlope.toFixed(3)}</code>
+
+        <!-- Live Interactive SVG Calculus Graph -->
+        <div class="astrolabe-plot-box">
+          <div class="plot-meta-row">
+            <span class="plot-func-tag">Active Wave: <strong>${snapshot.functionFormula}</strong></span>
+            <span class="plot-slope-badge">Tangent Slope f′(θ) = <strong>${slopeSign}${snapshot.evaluatedSlope.toFixed(3)}</strong></span>
           </div>
-          ${snapshot.isCriticalPoint ? '<div class="crit-badge">★ CRITICAL POINT f′(θ) ≈ 0: Maximum Stagger Window!</div>' : ''}
-          ${snapshot.nearAsymptote ? '<div class="warn-badge">⚠ NEAR VERTICAL ASYMPTOTE: Extreme wave surge!</div>' : ''}
+
+          <svg class="astrolabe-svg-graph" viewBox="0 0 ${plot.width} ${plot.height}">
+            <defs>
+              <linearGradient id="waveGlowGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.7"/>
+                <stop offset="50%" stop-color="#ffd978" stop-opacity="1"/>
+                <stop offset="100%" stop-color="#f59e0b" stop-opacity="0.8"/>
+              </linearGradient>
+            </defs>
+
+            <!-- Coordinate Axes -->
+            <line x1="20" y1="${plot.axisY}" x2="${plot.width - 20}" y2="${plot.axisY}" stroke="rgba(213, 184, 104, 0.4)" stroke-width="1.2" stroke-dasharray="3 3"/>
+            
+            <!-- Axis Ticks & Radian Labels -->
+            ${plot.ticks
+              .map(
+                (t) => `
+              <line x1="${t.x}" y1="${plot.axisY - 4}" x2="${t.x}" y2="${plot.axisY + 4}" stroke="rgba(213, 184, 104, 0.6)" stroke-width="1.2"/>
+              <text x="${t.x}" y="${plot.height - 4}" text-anchor="middle" font-size="9" fill="#d5b868" font-family="monospace">${t.label}</text>
+            `,
+              )
+              .join('')}
+
+            <!-- Wave Path f(t) -->
+            <path d="${plot.pathData}" fill="none" stroke="url(#waveGlowGrad)" stroke-width="2.6" stroke-linecap="round"/>
+
+            <!-- Instantaneous Tangent Line f'(theta) -->
+            <line x1="${plot.tangentLine.x1}" y1="${plot.tangentLine.y1}" x2="${plot.tangentLine.x2}" y2="${plot.tangentLine.y2}" stroke="#fff0a8" stroke-width="2" stroke-dasharray="4 2"/>
+
+            <!-- Tangent Contact Point (theta, f(theta)) -->
+            <circle cx="${plot.contactPoint.x}" cy="${plot.contactPoint.y}" r="6" fill="#ffd978" opacity="0.6"/>
+            <circle cx="${plot.contactPoint.x}" cy="${plot.contactPoint.y}" r="3.2" fill="#ffffff"/>
+          </svg>
         </div>
-        <div class="worked-step">
-          <span class="step-num">Step 4 · Chosen Sigil & Strike Resolution</span>
-          <div>Attuned Sigil: <strong>${snapshot.chosenSigilLabel}</strong> (${snapshot.isExactMatch ? 'MATCH' : 'MISMATCH'})</div>
-          <div>Damage Multiplier: <strong>${snapshot.damageMultiplier.toFixed(2)}×</strong></div>
-          <div style="font-size:13px;color:var(--adv-text-muted);margin-top:4px;">${snapshot.outcomeSummary}</div>
+
+        <!-- Four Arcane Theorem Plates -->
+        <div class="grimoire-plates-grid">
+          <div class="grimoire-plate plate-function">
+            <div class="plate-label">Plate I · Primordial Wave</div>
+            <div class="plate-formula"><strong>${snapshot.functionFormula}</strong></div>
+            <div class="plate-desc">Active trigonometric wave channeled by boss.</div>
+          </div>
+
+          <div class="grimoire-plate plate-rule">
+            <div class="plate-label">Plate II · Derivative Law</div>
+            <div class="plate-formula"><strong>${snapshot.derivativeRule}</strong></div>
+            <div class="plate-desc">Exact rate of instantaneous slope change.</div>
+          </div>
+
+          <div class="grimoire-plate plate-eval">
+            <div class="plate-label">Plate III · Tangent Phase Evaluation</div>
+            <div class="plate-eval-grid">
+              <div>Phase: <code>θ = ${snapshot.thetaPiLabel}</code></div>
+              <div>f(θ): <code>${snapshot.evaluatedFunction.toFixed(3)}</code></div>
+              <div>f′(θ) Exact: <code>${slopeSign}${snapshot.evaluatedSlope.toFixed(3)}</code></div>
+              <div>Numeric Δ: <code>${snapshot.numericSlope.toFixed(3)}</code></div>
+            </div>
+            ${snapshot.isCriticalPoint ? '<div class="crit-badge">★ CRITICAL INFLECTION POINT: Maximum Stagger Window!</div>' : ''}
+            ${snapshot.nearAsymptote ? '<div class="warn-badge">⚠ ASYMPTOTIC VOLATILITY: Wave Velocity Surge!</div>' : ''}
+          </div>
+
+          <div class="grimoire-plate plate-combat ${snapshot.isExactMatch ? 'match' : 'mismatch'}">
+            <div class="plate-label">Plate IV · Blade Attunement & Combat Resolution</div>
+            <div class="plate-combat-row">
+              <span class="plate-attuned">Attuned: <strong>${snapshot.chosenSigilLabel}</strong> (${snapshot.isExactMatch ? '✓ HARMONIC MATCH' : '✗ MISMATCH'})</span>
+              <span class="plate-mult">Multiplier: <strong>${snapshot.damageMultiplier.toFixed(2)}×</strong></span>
+            </div>
+            <div class="plate-desc">${snapshot.outcomeSummary}</div>
+          </div>
         </div>
+
         <div class="modal-footer">
-          <button id="worked-close" class="adv-btn primary">${closeLabel}</button>
+          <button id="worked-close" class="adv-btn primary astrolabe-btn">${closeLabel}</button>
         </div>
       </div>
     `;
