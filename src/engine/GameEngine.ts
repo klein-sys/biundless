@@ -290,7 +290,19 @@ export class GameEngine {
         this.syncPauseState('dev');
       },
       onTogglePause: () => {
-        if (!this.started) return;
+        if (this.ui.isWorkedExampleOpen()) {
+          this.ui.closeWorkedExample();
+          this.input.setUiBlocked(!this.started);
+          this.input.setPointerLockAllowed(this.started);
+          this.paused = false;
+          return;
+        }
+        if (!this.started) {
+          if (this.ui.isTitleSettingsOpen()) {
+            this.ui.showTitleMainView();
+          }
+          return;
+        }
         this.paused = !this.paused;
         this.syncPauseState('gameplay');
       },
@@ -344,7 +356,8 @@ export class GameEngine {
         this.playerYaw = Math.PI;
         this.playerRig.root.position.copy(this.playerPos);
         this.cameraCtrl.resetSmoothing(this.playerPos, this.playerYaw);
-        this.ui.showTitleOverlay();
+        this.syncControlVisibility();
+        this.ui.showTitleOverlay(this.settings);
         this.ui.showToast('SAVED & RETURNED TO TITLE');
       },
       onWarpBoss: (target) => {
@@ -374,6 +387,7 @@ export class GameEngine {
         saveSettings(next);
         this.applyGraphicsSettings();
         this.syncControlVisibility();
+        this.ui.syncSettings(next);
       },
       onToggleGodMode: () => {
         this.player.godMode = !this.player.godMode;
@@ -414,10 +428,14 @@ export class GameEngine {
       },
       onCloseWorkedExample: () => {
         this.paused = false;
-        this.input.setUiBlocked(false);
-        this.input.setPointerLockAllowed(true);
+        this.input.setUiBlocked(!this.started);
+        this.input.setPointerLockAllowed(this.started);
       },
       onOpenSettings: () => {
+        if (!this.started) {
+          this.ui.openTitleSettings();
+          return;
+        }
         this.paused = true;
         this.syncPauseState();
       },
@@ -428,7 +446,10 @@ export class GameEngine {
       onInteract: () => {
         this.handleInteract();
       },
-    });
+    }, this.settings);
+
+    this.input.setUiBlocked(true);
+    this.input.setPointerLockAllowed(false);
 
     this.applyGraphicsSettings();
     this.syncControlVisibility();
@@ -503,7 +524,7 @@ export class GameEngine {
   }
 
   private syncControlVisibility(): void {
-    this.ui.setMobileControlsVisible(this.isMobileUiActive());
+    this.ui.setMobileControlsVisible(this.started && this.isMobileUiActive());
   }
 
   public getActiveBoss(): BossRuntime | null {

@@ -5,6 +5,7 @@ import type { PlayerState } from '../combat/resonanceCombat';
 import { computeEffectiveStat } from '../combat/resonanceCombat';
 import {
   PRESET_PROFILES,
+  loadSettings,
   type ControlSchemeMode,
   type FpsCap,
   type GameSettings,
@@ -127,9 +128,13 @@ export class GameUI {
   private currentRegionId: string | null = null;
   private regionFadeTimeout: number | null = null;
 
-  constructor(root: HTMLElement, handlers: UIHandlers) {
+  private titleView: 'main' | 'settings' = 'main';
+  private currentSettings: GameSettings;
+
+  constructor(root: HTMLElement, handlers: UIHandlers, initialSettings?: GameSettings) {
     this.root = root;
     this.handlers = handlers;
+    this.currentSettings = initialSettings ?? loadSettings();
     this.renderShell();
   }
 
@@ -273,10 +278,10 @@ export class GameUI {
         </div>
       </div>
 
-      <!-- Modals: Settings/Menu, Worked Example, Title -->
+      <!-- Modals: Settings/Menu, Worked Example, Title Sidebar -->
       <div id="settings-modal" class="modal-backdrop hidden"></div>
       <div id="worked-modal" class="modal-backdrop hidden"></div>
-      <div id="title-overlay" class="modal-backdrop"></div>
+      <aside id="title-overlay" class="title-sidebar-overlay"></aside>
     `;
 
     this.hpFill = this.root.querySelector('#hp-fill')!;
@@ -394,54 +399,101 @@ export class GameUI {
     if (this.pointerHint) this.pointerHint.classList.toggle('hidden', !visible);
   }
 
-  public showTitleOverlay(): void {
+  public isTitleSettingsOpen(): boolean {
+    return !this.titleOverlay.classList.contains('hidden') && this.titleView === 'settings';
+  }
+
+  public getTitleView(): 'main' | 'settings' {
+    return this.titleView;
+  }
+
+  public showTitleMainView(): void {
+    this.titleView = 'main';
+    this.buildTitleOverlay();
+  }
+
+  public openTitleSettings(): void {
+    this.titleView = 'settings';
+    this.buildTitleOverlay();
+  }
+
+  public showTitleOverlay(settings?: GameSettings): void {
+    if (settings) {
+      this.currentSettings = { ...settings };
+    }
     this.setHUDVisible(false);
+    this.titleView = 'main';
     this.buildTitleOverlay();
     this.titleOverlay.classList.remove('hidden');
   }
 
+  public syncSettings(settings: GameSettings): void {
+    this.currentSettings = { ...settings };
+    if (this.titleView === 'settings' && !this.titleOverlay.classList.contains('hidden')) {
+      this.renderTitleSettingsView();
+    }
+  }
+
+  public isWorkedExampleOpen(): boolean {
+    return !this.workedModal.classList.contains('hidden');
+  }
+
+  public closeWorkedExample(): void {
+    this.workedModal.classList.add('hidden');
+  }
+
   public buildTitleOverlay(): void {
+    if (this.titleView === 'settings') {
+      this.renderTitleSettingsView();
+    } else {
+      this.renderTitleMainView();
+    }
+  }
+
+  private renderTitleMainView(): void {
     const hasSave = hasSavedProgression();
     const saveSummary = hasSave ? getProgressionSummary(loadProgression()) : '';
 
     this.titleOverlay.innerHTML = `
-      <div class="adventure-modal title-card">
-        <div class="title-crest">✧ SUNLIT CHRONICLES ✧</div>
-        <h1 class="title-main">ASHEN TANGENT</h1>
-        <p class="title-sub">MATH 101 Differential Calculus Open-World Adventure RPG</p>
-        <p class="title-desc">
-          Explore the vibrant rolling Sunlit Valley. Bosses channel live trigonometric functions <strong>f(θ)</strong>.
-          Attune your blade to their instantaneous derivative <strong>f′(θ)</strong> to break crystalline Phase Wards
-          and trigger devastating Critical Staggers.
-        </p>
-        <div class="controls-cheat">
-          <div><strong>Desktop:</strong> WASD Move · Shift Sprint · Space Jump · Ctrl/C Dash · LMB Strike · RMB/E Cast Sigil · 1–6 / Q Wheel · V POV · Esc Menu</div>
-          <div><strong>Mobile:</strong> Smooth Left Stick · Right Drag Camera · Responsive Strike / Cast / Jump / Dash buttons</div>
-        </div>
-        <div class="title-actions">
-          ${
-            hasSave
-              ? `
-            <div class="save-status-badge">★ Saved Journey: ${saveSummary}</div>
-            <div class="title-main-btns">
-              <button id="btn-continue" class="adv-btn primary glow-btn">
-                <span>Continue Adventure</span>
-              </button>
-              <button id="btn-new-game" class="adv-btn">New Adventure</button>
-            </div>
-            `
-              : `
-            <button id="start-hub-btn" class="adv-btn primary">Enter Sunlit Valley</button>
-            `
-          }
-          <div class="title-quick-warps">
-            <span class="warp-label">Quick Waypoint:</span>
-            <button id="start-witch-btn" class="adv-btn sm">Whispering Glade (sin/cos)</button>
-            <button id="start-lich-btn" class="adv-btn sm">Sunken Sun-Ruins (tan/cot)</button>
-            <button id="start-dragon-btn" class="adv-btn sm">Skyridge Peak (sec/csc)</button>
+      <div class="title-sidebar-content">
+        <div class="title-card sidebar-view-pane">
+          <div class="title-crest">✧ SUNLIT CHRONICLES ✧</div>
+          <h1 class="title-main">ASHEN TANGENT</h1>
+          <p class="title-sub">MATH 101 Differential Calculus Open-World Adventure RPG</p>
+          <p class="title-desc">
+            Explore the vibrant rolling Sunlit Valley. Bosses channel live trigonometric functions <strong>f(θ)</strong>.
+            Attune your blade to their instantaneous derivative <strong>f′(θ)</strong> to break crystalline Phase Wards
+            and trigger devastating Critical Staggers.
+          </p>
+          <div class="controls-cheat">
+            <div><strong>Desktop:</strong> WASD Move · Shift Sprint · Space Jump · Ctrl/C Dash · LMB Strike · RMB/E Cast Sigil · 1–6 / Q Wheel · V POV · Esc Menu</div>
+            <div><strong>Mobile:</strong> Smooth Left Stick · Right Drag Camera · Responsive Strike / Cast / Jump / Dash buttons</div>
           </div>
-          <div class="title-footer-row">
-            <button id="btn-title-settings" class="adv-btn text-btn">⚙ Sanctuary Settings</button>
+          <div class="title-actions">
+            ${
+              hasSave
+                ? `
+              <div class="save-status-badge">★ Saved Journey: ${saveSummary}</div>
+              <div class="title-main-btns">
+                <button id="btn-continue" class="adv-btn primary glow-btn">
+                  <span>Continue Adventure</span>
+                </button>
+                <button id="btn-new-game" class="adv-btn">New Adventure</button>
+              </div>
+              `
+                : `
+              <button id="start-hub-btn" class="adv-btn primary glow-btn" style="width:100%;">Enter Sunlit Valley</button>
+              `
+            }
+            <div class="title-quick-warps">
+              <span class="warp-label">Quick Waypoints:</span>
+              <button id="start-witch-btn" class="adv-btn sm">Whispering Glade (sin/cos)</button>
+              <button id="start-lich-btn" class="adv-btn sm">Sunken Sun-Ruins (tan/cot)</button>
+              <button id="start-dragon-btn" class="adv-btn sm">Skyridge Peak (sec/csc)</button>
+            </div>
+            <div class="title-footer-row">
+              <button id="btn-title-settings" class="adv-btn text-btn">⚙ Sanctuary Settings</button>
+            </div>
           </div>
         </div>
       </div>
@@ -480,7 +532,7 @@ export class GameUI {
     const titleSettingsBtn = this.titleOverlay.querySelector('#btn-title-settings');
     if (titleSettingsBtn) {
       titleSettingsBtn.addEventListener('click', () => {
-        this.handlers.onOpenSettings();
+        this.openTitleSettings();
       });
     }
 
@@ -492,6 +544,156 @@ export class GameUI {
         this.handlers.onWarpBoss(id);
       });
     }
+  }
+
+  private renderTitleSettingsView(): void {
+    const presets: GraphicsPreset[] = ['low', 'medium', 'high', 'ultra'];
+    const fpsCaps: FpsCap[] = [30, 60, 120, 0];
+    const controls: ControlSchemeMode[] = ['auto', 'desktop', 'mobile'];
+
+    this.titleOverlay.innerHTML = `
+      <div class="title-sidebar-content">
+        <div class="sidebar-settings-pane sidebar-view-pane">
+          <div class="sidebar-top-nav">
+            <button id="btn-sidebar-back" class="adv-btn sidebar-back-btn">
+              <span class="btn-arrow">←</span> Back to Title
+            </button>
+          </div>
+
+          <div class="title-crest">✧ SANCTUARY CONFIGURATION ✧</div>
+          <h2 class="sidebar-section-title">SANCTUARY SETTINGS</h2>
+          <p class="sidebar-section-sub">Audio, visual fidelity & calculus presentation</p>
+
+          <div class="sidebar-settings-list">
+            <div class="setting-row">
+              <span class="setting-title">Graphics Preset</span>
+              <div class="pill-group">
+                ${presets
+                  .map(
+                    (p) =>
+                      `<button data-sidebar-preset="${p}" class="pill-btn ${this.currentSettings.preset === p ? 'active' : ''}">${PRESET_PROFILES[p].label}</button>`,
+                  )
+                  .join('')}
+              </div>
+            </div>
+
+            <div class="setting-row">
+              <span class="setting-title">Target Frame Rate</span>
+              <div class="pill-group">
+                ${fpsCaps
+                  .map(
+                    (f) =>
+                      `<button data-sidebar-fps="${f}" class="pill-btn ${this.currentSettings.fpsCap === f ? 'active' : ''}">${f === 0 ? 'Max' : `${f}`}</button>`,
+                  )
+                  .join('')}
+              </div>
+            </div>
+
+            <div class="setting-row">
+              <span class="setting-title">Controls Mode</span>
+              <div class="pill-group">
+                ${controls
+                  .map(
+                    (c) =>
+                      `<button data-sidebar-ctrl="${c}" class="pill-btn ${this.currentSettings.controlMode === c ? 'active' : ''}">${c.toUpperCase()}</button>`,
+                  )
+                  .join('')}
+              </div>
+            </div>
+
+            <div class="setting-row inline-row">
+              <span class="setting-title">Show FPS Overlay</span>
+              <button id="sidebar-opt-fps" class="pill-btn ${this.currentSettings.showFps ? 'active' : ''}">
+                ${this.currentSettings.showFps ? 'SHOWN' : 'HIDDEN'}
+              </button>
+            </div>
+
+            <div class="setting-row inline-row">
+              <span class="setting-title">Procedural Audio</span>
+              <button id="sidebar-opt-audio" class="pill-btn ${this.currentSettings.audioEnabled ? 'active' : ''}">
+                ${this.currentSettings.audioEnabled ? 'ON' : 'MUTED'}
+              </button>
+            </div>
+
+            <div class="setting-row">
+              <div class="setting-title-row">
+                <span class="setting-title">Camera Sensitivity</span>
+                <span id="sidebar-sens-val" class="setting-val-badge">${this.currentSettings.sensitivity.toFixed(1)}×</span>
+              </div>
+              <input id="sidebar-opt-sens" type="range" min="0.4" max="2.2" step="0.1" value="${this.currentSettings.sensitivity}" class="adv-slider full-width" />
+            </div>
+
+            <div class="settings-group sidebar-math-group">
+              <label class="setting-label">Calculus Presentation</label>
+              <button id="sidebar-btn-worked" class="adv-btn primary" style="width:100%;">
+                Open MATH 101 Worked Example
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const backBtn = this.titleOverlay.querySelector('#btn-sidebar-back');
+    if (backBtn) {
+      backBtn.addEventListener('click', () => {
+        this.showTitleMainView();
+      });
+    }
+
+    this.titleOverlay.querySelectorAll('[data-sidebar-preset]').forEach((el) => {
+      el.addEventListener('click', () => {
+        const preset = el.getAttribute('data-sidebar-preset') as GraphicsPreset;
+        this.currentSettings = { ...this.currentSettings, preset };
+        this.handlers.onUpdateSettings(this.currentSettings);
+        this.renderTitleSettingsView();
+      });
+    });
+
+    this.titleOverlay.querySelectorAll('[data-sidebar-fps]').forEach((el) => {
+      el.addEventListener('click', () => {
+        const fpsCap = Number(el.getAttribute('data-sidebar-fps')) as FpsCap;
+        this.currentSettings = { ...this.currentSettings, fpsCap };
+        this.handlers.onUpdateSettings(this.currentSettings);
+        this.renderTitleSettingsView();
+      });
+    });
+
+    this.titleOverlay.querySelectorAll('[data-sidebar-ctrl]').forEach((el) => {
+      el.addEventListener('click', () => {
+        const controlMode = el.getAttribute('data-sidebar-ctrl') as ControlSchemeMode;
+        this.currentSettings = { ...this.currentSettings, controlMode };
+        this.handlers.onUpdateSettings(this.currentSettings);
+        this.renderTitleSettingsView();
+      });
+    });
+
+    this.titleOverlay.querySelector('#sidebar-opt-fps')?.addEventListener('click', () => {
+      this.currentSettings = { ...this.currentSettings, showFps: !this.currentSettings.showFps };
+      this.handlers.onUpdateSettings(this.currentSettings);
+      this.renderTitleSettingsView();
+    });
+
+    this.titleOverlay.querySelector('#sidebar-opt-audio')?.addEventListener('click', () => {
+      this.currentSettings = { ...this.currentSettings, audioEnabled: !this.currentSettings.audioEnabled };
+      this.handlers.onUpdateSettings(this.currentSettings);
+      this.renderTitleSettingsView();
+    });
+
+    const sensInput = this.titleOverlay.querySelector('#sidebar-opt-sens') as HTMLInputElement | null;
+    const sensVal = this.titleOverlay.querySelector('#sidebar-sens-val');
+    if (sensInput) {
+      sensInput.addEventListener('input', () => {
+        const val = Number(sensInput.value);
+        this.currentSettings = { ...this.currentSettings, sensitivity: val };
+        if (sensVal) sensVal.textContent = `${val.toFixed(1)}×`;
+        this.handlers.onUpdateSettings({ ...this.currentSettings });
+      });
+    }
+
+    this.titleOverlay.querySelector('#sidebar-btn-worked')?.addEventListener('click', () => {
+      this.handlers.onOpenWorkedExample();
+    });
   }
 
   private bindTopControls(): void {
@@ -649,6 +851,7 @@ export class GameUI {
     initialTab: 'gameplay' | 'dev' = 'gameplay',
     progression?: ProgressionState,
   ): void {
+    this.currentSettings = settings;
     this.settingsModal.classList.remove('hidden');
     const presets: GraphicsPreset[] = ['low', 'medium', 'high', 'ultra'];
     const fpsCaps: FpsCap[] = [30, 60, 120, 0];
@@ -930,6 +1133,9 @@ export class GameUI {
 
   public showWorkedExample(snapshot: WorkedExampleSnapshot): void {
     this.workedModal.classList.remove('hidden');
+    const closeLabel = !this.titleOverlay.classList.contains('hidden')
+      ? 'Return to Sanctuary Settings'
+      : 'Resume Combat';
     this.workedModal.innerHTML = `
       <div class="adventure-modal worked-card">
         <div class="title-crest">✧ DIFFERENTIAL CALCULUS ✧</div>
@@ -961,12 +1167,12 @@ export class GameUI {
           <div style="font-size:13px;color:var(--adv-text-muted);margin-top:4px;">${snapshot.outcomeSummary}</div>
         </div>
         <div class="modal-footer">
-          <button id="worked-close" class="adv-btn primary">Resume Combat</button>
+          <button id="worked-close" class="adv-btn primary">${closeLabel}</button>
         </div>
       </div>
     `;
     this.workedModal.querySelector('#worked-close')!.addEventListener('click', () => {
-      this.workedModal.classList.add('hidden');
+      this.closeWorkedExample();
       this.handlers.onCloseWorkedExample();
     });
   }
