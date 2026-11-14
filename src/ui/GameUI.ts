@@ -23,7 +23,14 @@ import {
 } from '../math/trigDerivatives';
 import type { BiomeLandmark } from '../world/SunlitValley';
 import type { DialogueChoice, DialogueNode } from '../dialogue/dialogueData';
-import { getLevelProgressFraction, type ProgressionState } from '../rpg/progressionSystem';
+import {
+  getLevelProgressFraction,
+  hasSavedProgression,
+  getProgressionSummary,
+  loadProgression,
+  resetProgression,
+  type ProgressionState,
+} from '../rpg/progressionSystem';
 
 export interface TelemetrySnapshot {
   fps: number;
@@ -33,7 +40,7 @@ export interface TelemetrySnapshot {
 }
 
 export interface UIHandlers {
-  onStartGame: () => void;
+  onStartGame: (isNewGame?: boolean) => void;
   onWarpBoss: (bossId: BossId | 'hub') => void;
   onSelectSigil: (sigil: DerivativeSigilId) => void;
   onTogglePov: () => void;
@@ -52,6 +59,9 @@ export interface UIHandlers {
   onOpenSettings: () => void;
   onCloseSettings: () => void;
   onInteract?: () => void;
+  onSaveProgress?: () => void;
+  onReturnToTown?: () => void;
+  onQuitToTitle?: () => void;
 }
 
 const SIGIL_SVG_PATHS: Record<DerivativeSigilId, string> = {
@@ -105,6 +115,10 @@ export class GameUI {
   private bossHpFill!: HTMLElement;
   private bossStaggerFill!: HTMLElement;
   private equationRibbon!: HTMLElement;
+
+  private hudTopLeft!: HTMLElement;
+  private hudTopRight!: HTMLElement;
+  private hudBottomRight!: HTMLElement;
 
   private activeSigilPill!: HTMLElement;
   private sigilPipButtons = new Map<DerivativeSigilId, HTMLElement>();
@@ -306,6 +320,10 @@ export class GameUI {
     this.bossStaggerFill = this.root.querySelector('#boss-stagger-fill')!;
     this.equationRibbon = this.root.querySelector('#equation-ribbon')!;
 
+    this.hudTopLeft = this.root.querySelector('.hud-top-left')!;
+    this.hudTopRight = this.root.querySelector('.hud-top-right')!;
+    this.hudBottomRight = this.root.querySelector('.hud-bottom-right')!;
+
     this.activeSigilPill = this.root.querySelector('#active-medallion')!;
     this.mobileControls = this.root.querySelector('#mobile-controls')!;
     this.radialWheel = this.root.querySelector('#radial-wheel')!;
@@ -318,6 +336,7 @@ export class GameUI {
     this.buildTitleOverlay();
     this.bindTopControls();
     this.bindMobileControls();
+    this.setHUDVisible(false);
   }
 
   private buildSigilPips(): void {
@@ -368,7 +387,23 @@ export class GameUI {
     this.radialWheel.addEventListener('click', () => this.handlers.onCloseWheel());
   }
 
-  private buildTitleOverlay(): void {
+  public setHUDVisible(visible: boolean): void {
+    if (this.hudTopLeft) this.hudTopLeft.classList.toggle('hud-hidden', !visible);
+    if (this.hudTopRight) this.hudTopRight.classList.toggle('hud-hidden', !visible);
+    if (this.hudBottomRight) this.hudBottomRight.classList.toggle('hud-hidden', !visible);
+    if (this.pointerHint) this.pointerHint.classList.toggle('hidden', !visible);
+  }
+
+  public showTitleOverlay(): void {
+    this.setHUDVisible(false);
+    this.buildTitleOverlay();
+    this.titleOverlay.classList.remove('hidden');
+  }
+
+  public buildTitleOverlay(): void {
+    const hasSave = hasSavedProgression();
+    const saveSummary = hasSave ? getProgressionSummary(loadProgression()) : '';
+
     this.titleOverlay.innerHTML = `
       <div class="adventure-modal title-card">
         <div class="title-crest">✧ SUNLIT CHRONICLES ✧</div>
@@ -380,29 +415,80 @@ export class GameUI {
           and trigger devastating Critical Staggers.
         </p>
         <div class="controls-cheat">
-          <div><strong>Desktop:</strong> WASD Move · Shift Sprint · Space Jump · Ctrl/C Dash · LMB Strike · RMB/E Cast Sigil · 1–6 / Q Wheel · V POV</div>
+          <div><strong>Desktop:</strong> WASD Move · Shift Sprint · Space Jump · Ctrl/C Dash · LMB Strike · RMB/E Cast Sigil · 1–6 / Q Wheel · V POV · Esc Menu</div>
           <div><strong>Mobile:</strong> Smooth Left Stick · Right Drag Camera · Responsive Strike / Cast / Jump / Dash buttons</div>
         </div>
         <div class="title-actions">
-          <button id="start-hub-btn" class="adv-btn primary">Enter Sunlit Valley</button>
+          ${
+            hasSave
+              ? `
+            <div class="save-status-badge">★ Saved Journey: ${saveSummary}</div>
+            <div class="title-main-btns">
+              <button id="btn-continue" class="adv-btn primary glow-btn">
+                <span>Continue Adventure</span>
+              </button>
+              <button id="btn-new-game" class="adv-btn">New Adventure</button>
+            </div>
+            `
+              : `
+            <button id="start-hub-btn" class="adv-btn primary">Enter Sunlit Valley</button>
+            `
+          }
           <div class="title-quick-warps">
             <span class="warp-label">Quick Waypoint:</span>
             <button id="start-witch-btn" class="adv-btn sm">Whispering Glade (sin/cos)</button>
             <button id="start-lich-btn" class="adv-btn sm">Sunken Sun-Ruins (tan/cot)</button>
             <button id="start-dragon-btn" class="adv-btn sm">Skyridge Peak (sec/csc)</button>
           </div>
+          <div class="title-footer-row">
+            <button id="btn-title-settings" class="adv-btn text-btn">⚙ Sanctuary Settings</button>
+          </div>
         </div>
       </div>
     `;
 
-    this.titleOverlay.querySelector('#start-hub-btn')!.addEventListener('click', () => {
-      this.titleOverlay.classList.add('hidden');
-      this.handlers.onStartGame();
-    });
-    for (const id of BOSS_ORDER) {
-      this.titleOverlay.querySelector(`#start-${id}-btn`)!.addEventListener('click', () => {
+    const startHub = this.titleOverlay.querySelector('#start-hub-btn');
+    if (startHub) {
+      startHub.addEventListener('click', () => {
         this.titleOverlay.classList.add('hidden');
-        this.handlers.onStartGame();
+        this.setHUDVisible(true);
+        this.handlers.onStartGame(false);
+      });
+    }
+
+    const continueBtn = this.titleOverlay.querySelector('#btn-continue');
+    if (continueBtn) {
+      continueBtn.addEventListener('click', () => {
+        this.titleOverlay.classList.add('hidden');
+        this.setHUDVisible(true);
+        this.handlers.onStartGame(false);
+      });
+    }
+
+    const newGameBtn = this.titleOverlay.querySelector('#btn-new-game');
+    if (newGameBtn) {
+      newGameBtn.addEventListener('click', () => {
+        if (confirm('Start a new adventure? This will reset your current progress in the Astral Archives.')) {
+          resetProgression();
+          this.titleOverlay.classList.add('hidden');
+          this.setHUDVisible(true);
+          this.handlers.onStartGame(true);
+        }
+      });
+    }
+
+    const titleSettingsBtn = this.titleOverlay.querySelector('#btn-title-settings');
+    if (titleSettingsBtn) {
+      titleSettingsBtn.addEventListener('click', () => {
+        this.handlers.onOpenSettings();
+      });
+    }
+
+    for (const id of BOSS_ORDER) {
+      this.titleOverlay.querySelector(`#start-${id}-btn`)?.addEventListener('click', () => {
+        this.titleOverlay.classList.add('hidden');
+        this.setHUDVisible(true);
+        this.handlers.onStartGame(false);
         this.handlers.onWarpBoss(id);
       });
     }
@@ -561,6 +647,7 @@ export class GameUI {
     freezeTheta?: boolean,
     telemetry?: TelemetrySnapshot,
     initialTab: 'gameplay' | 'dev' = 'gameplay',
+    progression?: ProgressionState,
   ): void {
     this.settingsModal.classList.remove('hidden');
     const presets: GraphicsPreset[] = ['low', 'medium', 'high', 'ultra'];
@@ -568,14 +655,69 @@ export class GameUI {
     const controls: ControlSchemeMode[] = ['auto', 'desktop', 'mobile'];
     const isDev = initialTab === 'dev';
 
+    const maxHp = player ? computeEffectiveStat(player, 'maxHp') : 160;
+    const maxStam = player ? computeEffectiveStat(player, 'maxStamina') : 100;
+    const progSummary = progression ? getProgressionSummary(progression) : 'Adventurer';
+    const xpPct = progression ? (getLevelProgressFraction(progression) * 100).toFixed(0) : '0';
+    const harmonicsMult = progression ? (1.0 + progression.harmonics * 0.25).toFixed(2) : '1.00';
+
     this.settingsModal.innerHTML = `
-      <div class="adventure-modal settings-card">
+      <div class="adventure-modal settings-card pause-modal">
         <div class="modal-tabs">
-          <button id="tab-gameplay" class="tab-btn ${!isDev ? 'active' : ''}">SANCTUARY SETTINGS</button>
-          <button id="tab-dev" class="tab-btn ${isDev ? 'active' : ''}">DEV & MATH 101 DEMO</button>
+          <button id="tab-gameplay" class="tab-btn ${!isDev ? 'active' : ''}">✧ SANCTUARY RESUME ✧</button>
+          <button id="tab-dev" class="tab-btn ${isDev ? 'active' : ''}">MATH 101 & DEV</button>
         </div>
 
         <div id="tab-body-gameplay" class="tab-body ${isDev ? 'hidden' : ''}">
+          <!-- Hero Status Card -->
+          <div class="hero-pause-card">
+            <div class="hero-pause-header">
+              <div class="hero-pause-avatar">⚔️</div>
+              <div class="hero-pause-meta">
+                <div class="hero-pause-title">ASTRAL SPELLBLADE</div>
+                <div class="hero-pause-sub">Level ${progression ? progression.level : 1} · ${progSummary}</div>
+              </div>
+              <div class="hero-pause-badge">SANCTUARY</div>
+            </div>
+
+            <div class="hero-pause-stats">
+              <div class="stat-pill"><span class="stat-lbl">HP:</span> <strong>${player ? Math.max(0, player.hp) : 160}/${maxHp}</strong></div>
+              <div class="stat-pill"><span class="stat-lbl">Stamina:</span> <strong>${player ? Math.round(player.stamina) : 100}/${maxStam}</strong></div>
+              <div class="stat-pill"><span class="stat-lbl">Flasks:</span> <strong>${player ? player.flasksRemaining : 3}/3</strong></div>
+              <div class="stat-pill"><span class="stat-lbl">Harmonics:</span> <strong>${harmonicsMult}×</strong></div>
+            </div>
+
+            <div class="hero-xp-section">
+              <div class="hero-xp-labels">
+                <span>Astral Insight</span>
+                <span>${progression ? progression.xp : 0} XP</span>
+              </div>
+              <div class="bar-pill xp-track-pause">
+                <div class="xp-fill" style="width: ${xpPct}%"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Sanctuary Action Buttons -->
+          <div class="pause-actions-grid">
+            <button id="opt-resume" class="adv-btn primary pause-btn">
+              <span class="btn-icon">▶</span> Resume Adventure <span class="kbd-hint">Esc</span>
+            </button>
+            <button id="opt-save" class="adv-btn pause-btn">
+              <span class="btn-icon">💾</span> Save Progress
+            </button>
+            <button id="opt-town" class="adv-btn pause-btn">
+              <span class="btn-icon">🏛️</span> Return to Solstice Haven
+            </button>
+            <button id="opt-quit-title" class="adv-btn danger pause-btn">
+              <span class="btn-icon">⏏</span> Quit to Title Screen
+            </button>
+          </div>
+
+          <div class="pause-settings-divider">
+            <span>SANCTUARY SETTINGS & WAYPOINTS</span>
+          </div>
+
           <div class="settings-group">
             <label class="setting-label">Waypoint Quick-Travel</label>
             <div class="btn-grid-4">
@@ -695,6 +837,27 @@ export class GameUI {
       bodyGameplay.classList.add('hidden');
     });
 
+    this.settingsModal.querySelector('#opt-resume')?.addEventListener('click', () => {
+      this.closeSettingsModal();
+      this.handlers.onCloseSettings();
+    });
+
+    this.settingsModal.querySelector('#opt-save')?.addEventListener('click', () => {
+      this.handlers.onSaveProgress?.();
+    });
+
+    this.settingsModal.querySelector('#opt-town')?.addEventListener('click', () => {
+      this.closeSettingsModal();
+      this.handlers.onCloseSettings();
+      this.handlers.onReturnToTown?.();
+    });
+
+    this.settingsModal.querySelector('#opt-quit-title')?.addEventListener('click', () => {
+      this.closeSettingsModal();
+      this.handlers.onCloseSettings();
+      this.handlers.onQuitToTitle?.();
+    });
+
     this.settingsModal.querySelectorAll('[data-warp]').forEach((el) => {
       el.addEventListener('click', () => {
         const target = el.getAttribute('data-warp') as BossId | 'hub';
@@ -709,7 +872,7 @@ export class GameUI {
         const preset = el.getAttribute('data-preset') as GraphicsPreset;
         const next = { ...settings, preset };
         this.handlers.onUpdateSettings(next);
-        this.openSettingsModal(next, player, boss, freezeTheta, telemetry);
+        this.openSettingsModal(next, player, boss, freezeTheta, telemetry, 'gameplay', progression);
       });
     });
 
@@ -718,7 +881,7 @@ export class GameUI {
         const fpsCap = Number(el.getAttribute('data-fps')) as FpsCap;
         const next = { ...settings, fpsCap };
         this.handlers.onUpdateSettings(next);
-        this.openSettingsModal(next, player, boss, freezeTheta, telemetry);
+        this.openSettingsModal(next, player, boss, freezeTheta, telemetry, 'gameplay', progression);
       });
     });
 
@@ -727,20 +890,20 @@ export class GameUI {
         const controlMode = el.getAttribute('data-ctrl') as ControlSchemeMode;
         const next = { ...settings, controlMode };
         this.handlers.onUpdateSettings(next);
-        this.openSettingsModal(next, player, boss, freezeTheta, telemetry);
+        this.openSettingsModal(next, player, boss, freezeTheta, telemetry, 'gameplay', progression);
       });
     });
 
     this.settingsModal.querySelector('#opt-fps')!.addEventListener('click', () => {
       const next = { ...settings, showFps: !settings.showFps };
       this.handlers.onUpdateSettings(next);
-      this.openSettingsModal(next, player, boss, freezeTheta, telemetry);
+      this.openSettingsModal(next, player, boss, freezeTheta, telemetry, 'gameplay', progression);
     });
 
     this.settingsModal.querySelector('#opt-audio')!.addEventListener('click', () => {
       const next = { ...settings, audioEnabled: !settings.audioEnabled };
       this.handlers.onUpdateSettings(next);
-      this.openSettingsModal(next, player, boss, freezeTheta, telemetry);
+      this.openSettingsModal(next, player, boss, freezeTheta, telemetry, 'gameplay', progression);
     });
 
     const sensInput = this.settingsModal.querySelector('#opt-sens') as HTMLInputElement;

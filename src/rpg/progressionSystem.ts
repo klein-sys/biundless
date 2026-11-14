@@ -184,6 +184,36 @@ export function loadProgression(): ProgressionState {
   return createDefaultProgression();
 }
 
+export function hasSavedProgression(): boolean {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return false;
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object') return false;
+      return typeof parsed.level === 'number' && parsed.level >= 1;
+    }
+  } catch (e) {
+    console.warn('[Progression] Error checking existing save:', e);
+  }
+  return false;
+}
+
+export function getProgressionSummary(state: ProgressionState): string {
+  const parts: string[] = [`Level ${state.level} Spellblade`];
+  const activeQuests = Object.keys(state.quests).filter((k) => state.quests[k] === 'active');
+  const completedQuests = Object.keys(state.quests).filter((k) => state.quests[k] === 'completed');
+  if (completedQuests.length > 0) {
+    parts.push(`${completedQuests.length} Quest${completedQuests.length === 1 ? '' : 's'} Done`);
+  } else if (activeQuests.length > 0) {
+    parts.push('1 Quest Active');
+  }
+  if (state.defeatedBosses.length > 0) {
+    parts.push(`${state.defeatedBosses.length} Boss${state.defeatedBosses.length === 1 ? '' : 'es'} Defeated`);
+  }
+  return parts.join(' · ');
+}
+
 export function resetProgression(): ProgressionState {
   try {
     if (typeof localStorage !== 'undefined') {

@@ -67,6 +67,7 @@ import {
   computeEffectiveStats,
   loadProgression,
   recordBossDefeat,
+  resetProgression,
   saveProgression,
   type ProgressionState,
 } from '../rpg/progressionSystem';
@@ -304,14 +305,47 @@ export class GameEngine {
     });
 
     this.ui = new GameUI(uiRoot, {
-      onStartGame: () => {
+      onStartGame: (isNewGame) => {
+        if (isNewGame) {
+          this.progression = resetProgression();
+          applyProgressionToPlayer(this.player, computeEffectiveStats(this.progression));
+          this.warpToLandmark('hub');
+        }
         this.started = true;
         this.paused = false;
+        this.cameraCtrl.resetSmoothing(this.playerPos, this.playerYaw);
         this.input.setUiBlocked(false);
         this.input.setPointerLockAllowed(true);
         this.audio.unlock();
         this.syncControlVisibility();
         this.ui.setPointerHintVisible(!this.isMobileUiActive() && !this.input.isPointerLocked());
+      },
+      onSaveProgress: () => {
+        saveProgression(this.progression);
+        this.ui.showToast('★ PROGRESS SAVED TO ASTRAL ARCHIVES');
+      },
+      onReturnToTown: () => {
+        this.warpToLandmark('hub');
+        this.paused = false;
+        this.syncPauseState();
+        this.ui.showToast('WARPED TO SOLSTICE HAVEN');
+      },
+      onQuitToTitle: () => {
+        saveProgression(this.progression);
+        this.started = false;
+        this.paused = false;
+        this.input.setUiBlocked(true);
+        this.input.setPointerLockAllowed(false);
+        this.clearCombatEntities();
+        this.activeBossId = null;
+        this.tangentArc.group.visible = false;
+        this.cameraCtrl.lockedOn = false;
+        this.playerPos.set(0, getTerrainHeight(0, 4), 4);
+        this.playerYaw = Math.PI;
+        this.playerRig.root.position.copy(this.playerPos);
+        this.cameraCtrl.resetSmoothing(this.playerPos, this.playerYaw);
+        this.ui.showTitleOverlay();
+        this.ui.showToast('SAVED & RETURNED TO TITLE');
       },
       onWarpBoss: (target) => {
         this.warpToLandmark(target);
@@ -425,6 +459,7 @@ export class GameEngine {
         this.freezeTheta,
         this.getTelemetry(),
         initialTab,
+        this.progression,
       );
     } else {
       this.ui.closeSettingsModal();
@@ -565,16 +600,23 @@ export class GameEngine {
       this.totalTime += renderedDt;
       this.stepEnvironmentVisuals();
       if (!this.started) {
-        this.cameraCtrl.yaw = Math.sin(this.totalTime * 0.12) * 0.35;
+        const orbitRadius = 24;
+        const orbitSpeed = 0.08;
+        const camX = Math.cos(this.totalTime * orbitSpeed) * orbitRadius;
+        const camZ = Math.sin(this.totalTime * orbitSpeed) * orbitRadius;
+        const camY = getTerrainHeight(camX, camZ) + 8.5;
+        this.camera.position.set(camX, camY, camZ);
+        this.camera.lookAt(0, 3, 0);
+      } else {
+        this.cameraCtrl.update(
+          this.camera,
+          this.playerPos,
+          null,
+          renderedDt,
+          renderedDt,
+          this.settings.shakeStrength,
+        );
       }
-      this.cameraCtrl.update(
-        this.camera,
-        this.playerPos,
-        null,
-        renderedDt,
-        renderedDt,
-        this.settings.shakeStrength,
-      );
     }
 
     // Keep key sunlight shadow frustum centered around player
