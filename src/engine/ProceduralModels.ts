@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { BOSS_CONFIGS, type BossId } from '../bosses/bossDefinitions';
 import { evaluateExactDerivative, evaluateTrig, type TrigFunctionId } from '../math/trigDerivatives';
 import {
@@ -2822,52 +2823,834 @@ export function createTheronBlacksmith(): { group: THREE.Group; update: (dt: num
   };
 }
 
+// --- Lyra the Herbalist (Model 2) ---------------------------------------------------------
+
+const LYRA_DOWN = new THREE.Vector3(0, -1, 0);
+const LYRA_UP = new THREE.Vector3(0, 1, 0);
+const LYRA_NO_ROTATION = new THREE.Quaternion();
+const _lyraToTarget = new THREE.Vector3();
+const _lyraBend = new THREE.Vector3();
+const _lyraSeg = new THREE.Vector3();
+const _lyraInstPos = new THREE.Vector3();
+const _lyraInstScale = new THREE.Vector3();
+const _lyraInstMatrix = new THREE.Matrix4();
+
+/**
+ * Bakes every static descendant mesh of `container` (skipping `keepLive` subtrees that animate)
+ * into one merged mesh per material, so a detailed prop costs a handful of draw calls. When a
+ * `matte` palette is given, plain matte standard materials (no metalness, emission, transparency
+ * or maps) are folded together into a single vertex-coloured material per face side.
+ */
+function mergeStaticMeshes(
+  container: THREE.Object3D,
+  keepLive: readonly THREE.Object3D[] = [],
+  matte?: { front: THREE.MeshStandardMaterial; double: THREE.MeshStandardMaterial }
+): void {
+  container.updateMatrixWorld(true);
+  const toContainer = new THREE.Matrix4().copy(container.matrixWorld).invert();
+  const buckets = new Map<THREE.Material, THREE.Mesh[]>();
+  const matteTarget = (mat: THREE.Material): THREE.Material | null => {
+    if (!matte || !(mat instanceof THREE.MeshStandardMaterial)) return null;
+    if (mat.metalness > 0 || mat.transparent || mat.map || mat.vertexColors || mat.emissive.getHex() !== 0) return null;
+    return mat.side === THREE.DoubleSide ? matte.double : matte.front;
+  };
+  const visit = (obj: THREE.Object3D) => {
+    if (keepLive.includes(obj)) return;
+    if (obj instanceof THREE.Mesh && !Array.isArray(obj.material) && !(obj instanceof THREE.InstancedMesh)) {
+      const key = matteTarget(obj.material) ?? obj.material;
+      const list = buckets.get(key) ?? [];
+      list.push(obj);
+      buckets.set(key, list);
+    }
+    obj.children.forEach(visit);
+  };
+  container.children.forEach(visit);
+
+  const bakeMatrix = new THREE.Matrix4();
+  buckets.forEach((meshes, material) => {
+    if (meshes.length < 2) return;
+    const isMatte = material === matte?.front || material === matte?.double;
+    const geos = meshes.map((mesh) => {
+      bakeMatrix.multiplyMatrices(toContainer, mesh.matrixWorld);
+      let baked = mesh.geometry.clone().applyMatrix4(bakeMatrix);
+      if (baked.index) baked = baked.toNonIndexed();
+      if (isMatte) {
+        const { r, g, b } = (mesh.material as THREE.MeshStandardMaterial).color;
+        const count = baked.attributes.position.count;
+        const colors = new Float32Array(count * 3);
+        for (let v = 0; v < count; v++) colors.set([r, g, b], v * 3);
+        baked.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+      }
+      return baked;
+    });
+    const mergedGeo = mergeGeometries(geos);
+    if (!mergedGeo) return;
+    const merged = new THREE.Mesh(mergedGeo, material);
+    merged.castShadow = meshes.some((m) => m.castShadow);
+    merged.receiveShadow = meshes.some((m) => m.receiveShadow);
+    meshes.forEach((m) => m.removeFromParent());
+    container.add(merged);
+  });
+}
+
+function setInstance(mesh: THREE.InstancedMesh, i: number, x: number, y: number, z: number, s: number): void {
+  _lyraInstPos.set(x, y, z);
+  _lyraInstScale.setScalar(s);
+  mesh.setMatrixAt(i, _lyraInstMatrix.compose(_lyraInstPos, LYRA_NO_ROTATION, _lyraInstScale));
+}
+
+/**
+ * Analytic two-bone IK: places the elbow so that upper + fore segments reach `target` from
+ * `shoulder`, bending toward `pole`. Writes results into `outElbow` / `outHand`.
+ */
+function solveTwoBoneArm(
+  shoulder: THREE.Vector3,
+  target: THREE.Vector3,
+  upperLen: number,
+  foreLen: number,
+  pole: THREE.Vector3,
+  outElbow: THREE.Vector3,
+  outHand: THREE.Vector3
+): void {
+  const dir = _lyraToTarget.subVectors(target, shoulder);
+  const rawDist = dir.length();
+  if (rawDist < 1e-6) dir.copy(LYRA_DOWN);
+  else dir.divideScalar(rawDist);
+  const dist = THREE.MathUtils.clamp(
+    rawDist,
+    Math.abs(upperLen - foreLen) + 1e-3,
+    upperLen + foreLen - 1e-3
+  );
+  const cosA = THREE.MathUtils.clamp(
+    (upperLen * upperLen + dist * dist - foreLen * foreLen) / (2 * upperLen * dist),
+    -1,
+    1
+  );
+  const sinA = Math.sqrt(1 - cosA * cosA);
+  const bend = _lyraBend.copy(pole).addScaledVector(dir, -pole.dot(dir));
+  if (bend.lengthSq() < 1e-8) bend.set(1, 0, 0).addScaledVector(dir, -dir.x);
+  bend.normalize();
+  outElbow
+    .copy(shoulder)
+    .addScaledVector(dir, cosA * upperLen)
+    .addScaledVector(bend, sinA * upperLen);
+  outHand.copy(shoulder).addScaledVector(dir, dist);
+}
+
+/** Positions `obj` at `from` and rotates its local -Y axis to point at `to`. */
+function alignSegmentDown(obj: THREE.Object3D, from: THREE.Vector3, to: THREE.Vector3): void {
+  obj.position.copy(from);
+  _lyraSeg.subVectors(to, from);
+  if (_lyraSeg.lengthSq() < 1e-10) return;
+  obj.quaternion.setFromUnitVectors(LYRA_DOWN, _lyraSeg.normalize());
+}
+
+export function createLyraHerbalist(): { group: THREE.Group; update: (dt: number) => void } {
+  const group = new THREE.Group();
+
+  const add = (
+    parent: THREE.Object3D,
+    geo: THREE.BufferGeometry,
+    mat: THREE.Material,
+    x = 0,
+    y = 0,
+    z = 0,
+    castShadow = false
+  ): THREE.Mesh => {
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.set(x, y, z);
+    mesh.castShadow = castShadow;
+    parent.add(mesh);
+    return mesh;
+  };
+
+  // --- Botanical Palette Materials ---
+  const skinMat = new THREE.MeshStandardMaterial({ color: 0xf3cba8, roughness: 0.7 });
+  const hairMat = new THREE.MeshStandardMaterial({ color: 0xb4532a, roughness: 0.8 });
+  const browMat = new THREE.MeshStandardMaterial({ color: 0x7c2d12, roughness: 0.8 });
+  const eyeMat = new THREE.MeshStandardMaterial({ color: 0x1f3d2b, roughness: 0.3 });
+  const eyeShineMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+  const blushMat = new THREE.MeshStandardMaterial({ color: 0xf2a39b, roughness: 0.9 });
+  const lipMat = new THREE.MeshStandardMaterial({ color: 0xb4534b, roughness: 0.7 });
+  const dressMat = new THREE.MeshStandardMaterial({
+    color: 0x3f6b46,
+    roughness: 0.78,
+    side: THREE.DoubleSide,
+  });
+  const blouseMat = new THREE.MeshStandardMaterial({ color: 0xf4ead5, roughness: 0.85 });
+  const bodiceMat = new THREE.MeshStandardMaterial({ color: 0x6b3f22, roughness: 0.65 });
+  const laceMat = new THREE.MeshStandardMaterial({ color: 0xe8d3a8, roughness: 0.8 });
+  const apronMat = new THREE.MeshStandardMaterial({
+    color: 0xfaf3df,
+    roughness: 0.85,
+    side: THREE.DoubleSide,
+  });
+  const shawlMat = new THREE.MeshStandardMaterial({
+    color: 0x9bb37f,
+    roughness: 0.9,
+    side: THREE.DoubleSide,
+  });
+  const sashMat = new THREE.MeshStandardMaterial({ color: 0x7c3a6b, roughness: 0.7 });
+  const bootMat = new THREE.MeshStandardMaterial({ color: 0x4a2e1c, roughness: 0.6 });
+  const goldTrimMat = new THREE.MeshStandardMaterial({ color: 0xd9a441, metalness: 0.75, roughness: 0.3 });
+  const leafMat = new THREE.MeshStandardMaterial({ color: 0x4d7c0f, roughness: 0.8 });
+  const sageLeafMat = new THREE.MeshStandardMaterial({ color: 0x84a46a, roughness: 0.85 });
+  const blossomMats = [
+    new THREE.MeshStandardMaterial({ color: 0xa78bfa, roughness: 0.6 }), // lavender
+    new THREE.MeshStandardMaterial({ color: 0xfffbeb, roughness: 0.6 }), // cream
+    new THREE.MeshStandardMaterial({ color: 0xf9a8d4, roughness: 0.6 }), // pink
+    new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.6 }), // gold
+  ];
+  const woodMat = new THREE.MeshStandardMaterial({ color: 0x8a5d3b, roughness: 0.85 });
+  const darkWoodMat = new THREE.MeshStandardMaterial({ color: 0x4e3421, roughness: 0.9 });
+  const stoneMat = new THREE.MeshStandardMaterial({ color: 0x9ca3af, roughness: 0.85 });
+  const ironMat = new THREE.MeshStandardMaterial({ color: 0x27272a, metalness: 0.8, roughness: 0.4 });
+  const copperMat = new THREE.MeshStandardMaterial({
+    color: 0xb8733a,
+    metalness: 0.75,
+    roughness: 0.3,
+    side: THREE.DoubleSide,
+  });
+  const soilMat = new THREE.MeshStandardMaterial({ color: 0x3b2a1e, roughness: 1.0 });
+  const pageMat = new THREE.MeshStandardMaterial({ color: 0xf5ecd6, roughness: 0.9 });
+  const mashMat = new THREE.MeshStandardMaterial({
+    color: 0x65a30d,
+    emissive: 0x84cc16,
+    emissiveIntensity: 0.15,
+    roughness: 0.9,
+  });
+  const brewMat = new THREE.MeshStandardMaterial({
+    color: 0x34d399,
+    emissive: 0x10b981,
+    emissiveIntensity: 0.6,
+    roughness: 0.2,
+  });
+  const coalMat = new THREE.MeshBasicMaterial({ color: 0xff6a1a });
+  const potionMats = [0xdc2626, 0x38bdf8, 0xf59e0b].map(
+    (color, i) =>
+      new THREE.MeshStandardMaterial({
+        color,
+        emissive: color,
+        emissiveIntensity: i === 0 ? 0.45 : 0.3,
+        transparent: true,
+        opacity: 0.9,
+        roughness: 0.15,
+      })
+  );
+  const corkMat = new THREE.MeshStandardMaterial({ color: 0xc19a6b, roughness: 0.9 });
+
+  // --- 1. Lyra Character Rig ---
+  const charGroup = new THREE.Group();
+  charGroup.name = 'lyra_body';
+  group.add(charGroup);
+
+  // Boots peeking from beneath the hem
+  const bootGeo = new THREE.BoxGeometry(0.13, 0.1, 0.22);
+  add(charGroup, bootGeo, bootMat, -0.1, 0.05, 0.1, true);
+  add(charGroup, bootGeo, bootMat, 0.1, 0.05, 0.1, true);
+
+  // Flared bell skirt (lathed profile, hem → waist)
+  const skirtProfile = [
+    new THREE.Vector2(0.44, 0.03),
+    new THREE.Vector2(0.45, 0.06),
+    new THREE.Vector2(0.41, 0.18),
+    new THREE.Vector2(0.33, 0.42),
+    new THREE.Vector2(0.26, 0.66),
+    new THREE.Vector2(0.215, 0.86),
+    new THREE.Vector2(0.2, 0.96),
+  ];
+  add(charGroup, new THREE.LatheGeometry(skirtProfile, 14), dressMat, 0, 0, 0, true);
+
+  const hemTrim = add(charGroup, new THREE.TorusGeometry(0.447, 0.018, 4, 18), goldTrimMat, 0, 0.07, 0);
+  hemTrim.rotation.x = Math.PI * 0.5;
+
+  // Curved linen apron following the skirt cone
+  add(
+    charGroup,
+    new THREE.CylinderGeometry(0.222, 0.418, 0.7, 8, 1, true, -0.75, 1.5),
+    apronMat,
+    0,
+    0.55,
+    0
+  );
+  const apronSlope = Math.atan(0.196 / 0.7);
+  const pocket = add(charGroup, new THREE.BoxGeometry(0.18, 0.13, 0.015), apronMat, 0, 0.5, 0.342);
+  pocket.rotation.x = apronSlope;
+  const pocketLeafGeo = new THREE.SphereGeometry(0.03, 6, 4);
+  const pocketLeafA = add(charGroup, pocketLeafGeo, leafMat, -0.02, 0.515, 0.352);
+  pocketLeafA.scale.set(1.3, 0.55, 0.25);
+  pocketLeafA.rotation.set(apronSlope, 0, 0.5);
+  const pocketLeafB = add(charGroup, pocketLeafGeo, sageLeafMat, 0.025, 0.505, 0.352);
+  pocketLeafB.scale.set(1.3, 0.55, 0.25);
+  pocketLeafB.rotation.set(apronSlope, 0, -0.5);
+
+  // Plum waist sash with a bow at the back
+  const sash = add(charGroup, new THREE.TorusGeometry(0.205, 0.03, 5, 14), sashMat, 0, 0.95, 0);
+  sash.rotation.x = Math.PI * 0.5;
+  const bowGeo = new THREE.SphereGeometry(0.05, 6, 4);
+  const bowL = add(charGroup, bowGeo, sashMat, -0.05, 0.95, -0.22);
+  bowL.scale.set(1.2, 0.7, 0.4);
+  bowL.rotation.z = 0.4;
+  const bowR = add(charGroup, bowGeo, sashMat, 0.05, 0.95, -0.22);
+  bowR.scale.set(1.2, 0.7, 0.4);
+  bowR.rotation.z = -0.4;
+  const bowTail = add(charGroup, new THREE.BoxGeometry(0.035, 0.18, 0.01), sashMat, 0.015, 0.84, -0.225);
+  bowTail.rotation.z = 0.15;
+
+  // Leather hip pouch with gold clasp
+  const pouch = add(charGroup, new THREE.BoxGeometry(0.1, 0.12, 0.06), bodiceMat, 0.225, 0.85, 0.05, true);
+  pouch.rotation.y = Math.PI * 0.45;
+  add(charGroup, new THREE.SphereGeometry(0.014, 5, 4), goldTrimMat, 0.257, 0.875, 0.06);
+
+  // Upper body pivots at the waist so breathing and leaning carry the shoulders, head and braid.
+  const upperBody = new THREE.Group();
+  upperBody.position.set(0, 0.95, 0);
+  charGroup.add(upperBody);
+
+  // Laced corset bodice
+  add(upperBody, new THREE.CylinderGeometry(0.185, 0.2, 0.24, 10), bodiceMat, 0, 0.12, 0, true);
+  const laceGeo = new THREE.BoxGeometry(0.075, 0.008, 0.006);
+  for (let l = 0; l < 3; l++) {
+    const ly = 0.05 + l * 0.055;
+    add(upperBody, laceGeo, laceMat, 0, ly, 0.193).rotation.z = 0.6;
+    add(upperBody, laceGeo, laceMat, 0, ly, 0.193).rotation.z = -0.6;
+  }
+
+  // Linen blouse chest
+  add(upperBody, new THREE.CylinderGeometry(0.16, 0.19, 0.22, 10), blouseMat, 0, 0.35, 0, true);
+
+  // Draped sage shawl capelet with gold brooch
+  add(upperBody, new THREE.CylinderGeometry(0.13, 0.235, 0.22, 12, 1, true), shawlMat, 0, 0.43, 0, true);
+  add(upperBody, new THREE.SphereGeometry(0.022, 6, 5), goldTrimMat, 0, 0.41, 0.2);
+  const broochLeaf = add(upperBody, pocketLeafGeo, leafMat, 0.025, 0.395, 0.2);
+  broochLeaf.scale.set(1.0, 0.45, 0.3);
+  broochLeaf.rotation.z = -0.6;
+
+  // Puffed sleeve caps (shoulders)
+  const shoulderLocalR = new THREE.Vector3(0.2, 0.41, 0.03);
+  const shoulderLocalL = new THREE.Vector3(-0.2, 0.41, 0.03);
+  const puffGeo = new THREE.SphereGeometry(0.075, 8, 6);
+  add(upperBody, puffGeo, blouseMat, shoulderLocalR.x, shoulderLocalR.y, shoulderLocalR.z, true);
+  add(upperBody, puffGeo, blouseMat, shoulderLocalL.x, shoulderLocalL.y, shoulderLocalL.z, true);
+
+  // Neck
+  add(upperBody, new THREE.CylinderGeometry(0.055, 0.06, 0.12, 8), skinMat, 0, 0.52, 0);
+
+  // Head
+  const headGroup = new THREE.Group();
+  headGroup.name = 'lyra_head';
+  headGroup.position.set(0, 0.65, 0.01);
+  upperBody.add(headGroup);
+
+  const headMesh = add(headGroup, new THREE.SphereGeometry(0.155, 12, 10), skinMat, 0, 0, 0, true);
+  headMesh.scale.set(1, 1.06, 1);
+
+  // Face: eyes with highlights, brows, blush, nose, mouth
+  const eyeGeo = new THREE.SphereGeometry(0.025, 8, 6);
+  const shineGeo = new THREE.SphereGeometry(0.008, 4, 3);
+  const browGeo = new THREE.BoxGeometry(0.05, 0.008, 0.01);
+  const blushGeo = new THREE.SphereGeometry(0.022, 6, 4);
+  for (const side of [-1, 1]) {
+    add(headGroup, eyeGeo, eyeMat, side * 0.055, 0, 0.138).scale.set(1, 1.2, 0.5);
+    add(headGroup, shineGeo, eyeShineMat, side * 0.05, 0.012, 0.152);
+    add(headGroup, browGeo, browMat, side * 0.056, 0.048, 0.142).rotation.z = side * -0.15;
+    add(headGroup, blushGeo, blushMat, side * 0.085, -0.042, 0.122).scale.set(1.3, 0.7, 0.4);
+  }
+  add(headGroup, new THREE.SphereGeometry(0.012, 5, 4), skinMat, 0, -0.025, 0.155);
+  add(headGroup, new THREE.BoxGeometry(0.03, 0.006, 0.01), lipMat, 0, -0.072, 0.145);
+
+  // Hair: crown cap tilted back to frame the face, bangs, side locks and back volume
+  const hairCap = add(
+    headGroup,
+    new THREE.SphereGeometry(0.168, 12, 6, 0, Math.PI * 2, 0, Math.PI * 0.5),
+    hairMat,
+    0,
+    0.01,
+    -0.012,
+    true
+  );
+  hairCap.rotation.x = -0.35;
+  const bangGeo = new THREE.SphereGeometry(0.05, 7, 5);
+  const bangs: [number, number, number, number][] = [
+    [-0.065, 0.078, 0.128, 0.35],
+    [0, 0.09, 0.138, 0],
+    [0.065, 0.074, 0.128, -0.35],
+  ];
+  bangs.forEach(([bx, by, bz, rz]) => {
+    const bang = add(headGroup, bangGeo, hairMat, bx, by, bz);
+    bang.scale.set(1.1, 0.55, 0.5);
+    bang.rotation.z = rz;
+  });
+  const lockGeo = new THREE.SphereGeometry(0.04, 6, 5);
+  for (const side of [-1, 1]) {
+    add(headGroup, lockGeo, hairMat, side * 0.135, -0.05, 0.055).scale.set(0.6, 1.8, 0.7);
+  }
+  add(headGroup, new THREE.SphereGeometry(0.15, 10, 7), hairMat, 0, -0.03, -0.06).scale.set(1.05, 1.1, 0.85);
+
+  // Woven flower crown (follows the hair tilt)
+  const crown = new THREE.Group();
+  crown.position.set(0, 0.07, -0.01);
+  crown.rotation.x = -0.35;
+  headGroup.add(crown);
+  add(crown, new THREE.TorusGeometry(0.158, 0.012, 4, 18), leafMat).rotation.x = Math.PI * 0.5;
+  const blossomGeo = new THREE.IcosahedronGeometry(0.028, 0);
+  const crownLeafGeo = new THREE.SphereGeometry(0.026, 5, 3);
+  const BLOSSOMS = 9;
+  for (let b = 0; b < BLOSSOMS; b++) {
+    const a = (b / BLOSSOMS) * Math.PI * 2;
+    add(crown, blossomGeo, blossomMats[b % blossomMats.length], Math.sin(a) * 0.158, 0.012, Math.cos(a) * 0.158);
+    if (b % 3 !== 2) {
+      const la = a + Math.PI / BLOSSOMS;
+      const leaf = add(crown, crownLeafGeo, b % 2 ? sageLeafMat : leafMat, Math.sin(la) * 0.165, 0, Math.cos(la) * 0.165);
+      leaf.scale.set(1.4, 0.35, 0.7);
+      leaf.rotation.y = la;
+    }
+  }
+
+  // Long copper braid draped over the left shoulder (pivots at the nape for sway).
+  // Overlapping, alternately tilted links read as a woven plait.
+  const BRAID_PIVOT = new THREE.Vector3(-0.1, 0.61, -0.06);
+  const braidGroup = new THREE.Group();
+  braidGroup.position.copy(BRAID_PIVOT);
+  upperBody.add(braidGroup);
+  const braidLinks: [number, number, number, number][] = [
+    [-0.1, 0.61, -0.06, 0.045],
+    [-0.15, 0.55, 0.03, 0.045],
+    [-0.18, 0.48, 0.11, 0.043],
+    [-0.19, 0.41, 0.17, 0.042],
+    [-0.175, 0.34, 0.205, 0.04],
+    [-0.155, 0.27, 0.205, 0.038],
+    [-0.145, 0.2, 0.2, 0.036],
+    [-0.14, 0.13, 0.198, 0.034],
+    [-0.135, 0.07, 0.196, 0.032],
+  ];
+  const toBraid = (x: number, y: number, z: number): [number, number, number] => [
+    x - BRAID_PIVOT.x,
+    y - BRAID_PIVOT.y,
+    z - BRAID_PIVOT.z,
+  ];
+  braidLinks.forEach(([x, y, z, r], i) => {
+    const link = add(braidGroup, new THREE.SphereGeometry(r, 7, 5), hairMat, ...toBraid(x, y, z));
+    link.scale.set(1, 1.35, 0.9);
+    link.rotation.z = i % 2 ? 0.35 : -0.35;
+  });
+  add(braidGroup, new THREE.TorusGeometry(0.03, 0.01, 4, 10), sashMat, ...toBraid(-0.135, 0.03, 0.196)).rotation.x =
+    Math.PI * 0.5;
+  add(braidGroup, new THREE.ConeGeometry(0.035, 0.08, 6), hairMat, ...toBraid(-0.135, -0.02, 0.196));
+
+  // Arms: two-bone segments solved each frame in charGroup space
+  const UPPER_LEN = 0.29;
+  const FORE_LEN = 0.27;
+  const upperArmGeo = new THREE.CylinderGeometry(0.05, 0.042, UPPER_LEN, 8);
+  const foreArmGeo = new THREE.CylinderGeometry(0.038, 0.032, FORE_LEN, 8);
+  const cuffGeo = new THREE.TorusGeometry(0.042, 0.014, 4, 10);
+  const handGeo = new THREE.SphereGeometry(0.04, 8, 6);
+  const buildArm = (name: string) => {
+    const arm = new THREE.Group();
+    arm.name = name;
+    charGroup.add(arm);
+    const upper = new THREE.Group();
+    arm.add(upper);
+    add(upper, upperArmGeo, blouseMat, 0, -UPPER_LEN / 2, 0, true);
+    const fore = new THREE.Group();
+    arm.add(fore);
+    add(fore, cuffGeo, blouseMat, 0, -0.012, 0).rotation.x = Math.PI * 0.5;
+    add(fore, foreArmGeo, skinMat, 0, -FORE_LEN / 2, 0, true);
+    const hand = add(arm, handGeo, skinMat);
+    hand.scale.set(0.9, 1.1, 0.8);
+    return { upper, fore, hand };
+  };
+  const armR = buildArm('lyra_pestle_arm');
+  const armL = buildArm('lyra_steady_arm');
+  const poleR = new THREE.Vector3(1, -0.3, -0.5).normalize();
+  const poleL = new THREE.Vector3(-1, -0.3, -0.5).normalize();
+
+  // --- 2. Apothecary Workbench ---
+  const TABLE_TOP = 0.9;
+  const workbench = new THREE.Group();
+  workbench.name = 'lyra_workbench';
+  group.add(workbench);
+
+  const tableTop = add(workbench, new THREE.BoxGeometry(1.1, 0.05, 0.44), woodMat, 0, TABLE_TOP - 0.025, 0.52, true);
+  tableTop.receiveShadow = true;
+  const legGeo = new THREE.BoxGeometry(0.05, TABLE_TOP - 0.05, 0.05);
+  for (const lx of [-0.5, 0.5]) {
+    for (const lz of [0.34, 0.7]) {
+      add(workbench, legGeo, darkWoodMat, lx, (TABLE_TOP - 0.05) / 2, lz, true);
+    }
+  }
+  add(workbench, new THREE.BoxGeometry(1.0, 0.03, 0.36), darkWoodMat, 0, 0.25, 0.52);
+
+  // Shelf jars
+  const jarGeo = new THREE.CylinderGeometry(0.05, 0.05, 0.12, 8);
+  const jarLidGeo = new THREE.CylinderGeometry(0.054, 0.054, 0.02, 8);
+  [-0.3, -0.15, 0.25].forEach((jx, j) => {
+    add(workbench, jarGeo, potionMats[(j + 1) % potionMats.length], jx, 0.325, 0.52);
+    add(workbench, jarLidGeo, corkMat, jx, 0.395, 0.52);
+  });
+
+  // Front plaque: leaf emblem marks the apothecary
+  add(workbench, new THREE.BoxGeometry(0.34, 0.15, 0.02), darkWoodMat, 0, TABLE_TOP - 0.13, 0.75);
+  add(workbench, new THREE.TorusGeometry(0.055, 0.008, 4, 14), goldTrimMat, 0, TABLE_TOP - 0.13, 0.762);
+  const plaqueLeaf = add(workbench, pocketLeafGeo, leafMat, 0, TABLE_TOP - 0.13, 0.762);
+  plaqueLeaf.scale.set(0.75, 1.45, 0.25);
+  plaqueLeaf.rotation.z = -0.5;
+
+  // Stone mortar filled with glowing herb mash
+  const mortarCenter = new THREE.Vector3(0.03, TABLE_TOP, 0.38);
+  const mortar = new THREE.Group();
+  mortar.name = 'lyra_mortar';
+  mortar.position.copy(mortarCenter);
+  workbench.add(mortar);
+  const mortarProfile = [
+    new THREE.Vector2(0.0, 0.0),
+    new THREE.Vector2(0.055, 0.0),
+    new THREE.Vector2(0.075, 0.025),
+    new THREE.Vector2(0.082, 0.06),
+    new THREE.Vector2(0.078, 0.095),
+  ];
+  add(mortar, new THREE.LatheGeometry(mortarProfile, 10), stoneMat, 0, 0, 0, true);
+  add(mortar, new THREE.TorusGeometry(0.074, 0.01, 4, 12), stoneMat, 0, 0.095, 0).rotation.x = Math.PI * 0.5;
+  add(mortar, new THREE.CylinderGeometry(0.068, 0.06, 0.02, 10), mashMat, 0, 0.075, 0);
+
+  // Pestle (aligned from its tip in the bowl toward Lyra's grinding hand)
+  const PESTLE_LEN = 0.19;
+  const pestle = new THREE.Group();
+  pestle.name = 'lyra_pestle';
+  group.add(pestle);
+  add(pestle, new THREE.CylinderGeometry(0.012, 0.022, PESTLE_LEN, 8), stoneMat, 0, PESTLE_LEN / 2, 0, true);
+
+  // Potion bottles (crimson ties back to the Crimson Flask heal)
+  const bottleBodyGeo = new THREE.SphereGeometry(0.048, 7, 5);
+  const bottleNeckGeo = new THREE.CylinderGeometry(0.016, 0.02, 0.06, 6);
+  const corkGeo = new THREE.CylinderGeometry(0.018, 0.015, 0.025, 6);
+  const bottles: [number, number, number][] = [
+    [0.3, 0.45, 1.0],
+    [0.41, 0.6, 0.85],
+    [0.24, 0.63, 0.75],
+  ];
+  bottles.forEach(([bx, bz, s], i) => {
+    add(workbench, bottleBodyGeo, potionMats[i], bx, TABLE_TOP + 0.045 * s, bz).scale.setScalar(s);
+    add(workbench, bottleNeckGeo, potionMats[i], bx, TABLE_TOP + 0.11 * s, bz).scale.setScalar(s);
+    add(workbench, corkGeo, corkMat, bx, TABLE_TOP + 0.15 * s, bz).scale.setScalar(s);
+  });
+
+  // Open herbal grimoire
+  const book = new THREE.Group();
+  book.position.set(-0.3, TABLE_TOP, 0.56);
+  book.rotation.y = 0.35;
+  workbench.add(book);
+  add(book, new THREE.BoxGeometry(0.3, 0.015, 0.2), sashMat, 0, 0.008, 0);
+  for (const side of [-1, 1]) {
+    add(book, new THREE.BoxGeometry(0.135, 0.012, 0.18), pageMat, side * 0.072, 0.022, 0).rotation.z = side * -0.08;
+  }
+  add(book, pocketLeafGeo, sageLeafMat, 0.07, 0.032, 0).scale.set(1.4, 0.15, 0.7);
+
+  // Fresh herb bundle lying on the bench
+  const herbBundle = new THREE.Group();
+  herbBundle.position.set(0.05, TABLE_TOP + 0.02, 0.63);
+  herbBundle.rotation.y = -0.4;
+  workbench.add(herbBundle);
+  const stemGeo = new THREE.CylinderGeometry(0.006, 0.006, 0.26, 4);
+  const herbLeafGeo = new THREE.SphereGeometry(0.03, 5, 3);
+  for (let h = 0; h < 3; h++) {
+    add(herbBundle, stemGeo, leafMat, 0, 0, (h - 1) * 0.018).rotation.z = Math.PI * 0.5 + (h - 1) * 0.12;
+    add(herbBundle, herbLeafGeo, h === 1 ? sageLeafMat : leafMat, 0.1, 0.005, (h - 1) * 0.03).scale.set(1.5, 0.4, 0.9);
+  }
+  add(herbBundle, new THREE.TorusGeometry(0.022, 0.006, 4, 8), laceMat, -0.05, 0, 0).rotation.y = Math.PI * 0.5;
+
+  // --- 3. Copper Cauldron over a Coal Brazier ---
+  const cauldron = new THREE.Group();
+  cauldron.name = 'lyra_cauldron';
+  cauldron.position.set(-1.0, 0, 0.2);
+  group.add(cauldron);
+
+  add(cauldron, new THREE.TorusGeometry(0.22, 0.05, 4, 10), stoneMat, 0, 0.04, 0).rotation.x = Math.PI * 0.5;
+  const coalGeo = new THREE.IcosahedronGeometry(0.055, 0);
+  for (let c = 0; c < 5; c++) {
+    const a = (c / 5) * Math.PI * 2;
+    add(cauldron, coalGeo, coalMat, Math.cos(a) * 0.1, 0.07, Math.sin(a) * 0.1);
+  }
+  // Legs stop under the bowl's widest point so they never poke through the brew.
+  const tripodLegGeo = new THREE.CylinderGeometry(0.018, 0.018, 0.56, 5);
+  for (let t = 0; t < 3; t++) {
+    const a = (t / 3) * Math.PI * 2 + 0.3;
+    const leg = add(cauldron, tripodLegGeo, ironMat, Math.cos(a) * 0.31, 0.28, Math.sin(a) * 0.31, true);
+    leg.rotation.set(Math.sin(a) * -0.18, 0, Math.cos(a) * 0.18);
+  }
+  add(
+    cauldron,
+    new THREE.SphereGeometry(0.3, 12, 6, 0, Math.PI * 2, Math.PI * 0.45, Math.PI * 0.55),
+    copperMat,
+    0,
+    0.62,
+    0,
+    true
+  );
+  add(cauldron, new THREE.TorusGeometry(0.296, 0.025, 5, 16), copperMat, 0, 0.667, 0).rotation.x = Math.PI * 0.5;
+  const BREW_Y = 0.65;
+  add(cauldron, new THREE.CylinderGeometry(0.285, 0.285, 0.02, 14), brewMat, 0, BREW_Y, 0);
+  add(cauldron, new THREE.CylinderGeometry(0.014, 0.014, 0.55, 5), woodMat, 0.12, 0.82, 0.04).rotation.z = 0.5;
+
+  // --- 4. Herb Drying Rack (behind Lyra) ---
+  const rack = new THREE.Group();
+  rack.name = 'lyra_drying_rack';
+  rack.position.set(0, 0, -0.55);
+  group.add(rack);
+  const postGeo = new THREE.BoxGeometry(0.07, 1.9, 0.07);
+  add(rack, postGeo, darkWoodMat, -0.72, 0.95, 0, true);
+  add(rack, postGeo, darkWoodMat, 0.72, 0.95, 0, true);
+  add(rack, new THREE.BoxGeometry(1.6, 0.06, 0.06), darkWoodMat, 0, 1.87, 0, true);
+
+  const bundleMats = [sageLeafMat, blossomMats[0], leafMat, blossomMats[3], sageLeafMat];
+  const stringGeo = new THREE.CylinderGeometry(0.005, 0.005, 0.15, 3);
+  const bundleGeo = new THREE.ConeGeometry(0.07, 0.3, 6);
+  const tieGeo = new THREE.CylinderGeometry(0.022, 0.022, 0.02, 6);
+  const dryingBundles: THREE.Group[] = [];
+  for (let b = 0; b < 5; b++) {
+    const pivot = new THREE.Group();
+    pivot.position.set(-0.5 + b * 0.25, 1.84, 0);
+    rack.add(pivot);
+    add(pivot, stringGeo, laceMat, 0, -0.075, 0);
+    add(pivot, tieGeo, laceMat, 0, -0.16, 0);
+    const len = 1 - (b % 2) * 0.2;
+    add(pivot, bundleGeo, bundleMats[b], 0, -0.31, 0, true).scale.set(1, len, 1);
+    // Loose leaves around the flared end break up the cone silhouette
+    for (let l = 0; l < 3; l++) {
+      const la = (l / 3) * Math.PI * 2 + b;
+      const leaf = add(pivot, herbLeafGeo, bundleMats[b], Math.cos(la) * 0.06, -0.17 - 0.27 * len, Math.sin(la) * 0.06);
+      leaf.scale.set(1.2, 2.0, 0.6);
+      leaf.rotation.set(0, -la, Math.cos(la) * 0.5);
+    }
+    dryingBundles.push(pivot);
+  }
+
+  // --- 5. Flower Crate (Lyra's right) ---
+  const crate = new THREE.Group();
+  crate.position.set(0.95, 0, 0.12);
+  crate.rotation.y = -0.25;
+  group.add(crate);
+  add(crate, new THREE.BoxGeometry(0.5, 0.3, 0.4), woodMat, 0, 0.15, 0, true);
+  add(crate, new THREE.BoxGeometry(0.46, 0.02, 0.36), soilMat, 0, 0.29, 0);
+  const crateStemGeo = new THREE.CylinderGeometry(0.006, 0.006, 0.18, 3);
+  const crateBlossomGeo = new THREE.OctahedronGeometry(0.038, 0);
+  for (let f = 0; f < 7; f++) {
+    const fx = -0.17 + (f % 4) * 0.11 + (f > 3 ? 0.05 : 0);
+    const fz = f > 3 ? 0.08 : -0.07;
+    const fh = 0.38 + seededRand(f * 3.7) * 0.08;
+    add(crate, crateStemGeo, leafMat, fx, fh - 0.09, fz);
+    add(crate, crateBlossomGeo, blossomMats[f % blossomMats.length], fx, fh, fz);
+    const leaf = add(crate, herbLeafGeo, leafMat, fx + 0.025, fh - 0.08, fz);
+    leaf.scale.set(1.2, 0.35, 0.7);
+    leaf.rotation.z = 0.4;
+  }
+
+  // --- 6. Pooled Ambient VFX (instanced, closed-form motion; no per-frame allocation) ---
+  const bubbleMat = new THREE.MeshStandardMaterial({
+    color: 0x6ee7b7,
+    emissive: 0x34d399,
+    emissiveIntensity: 0.8,
+    roughness: 0.2,
+  });
+  const steamMat = new THREE.MeshBasicMaterial({
+    color: 0xf0fdf4,
+    transparent: true,
+    opacity: 0.32,
+    depthWrite: false,
+  });
+  const moteMat = new THREE.MeshBasicMaterial({ color: 0xfde68a });
+  const vfxGroup = new THREE.Group();
+  vfxGroup.name = 'lyra_vfx';
+  group.add(vfxGroup);
+  const addPool = (geo: THREE.BufferGeometry, mat: THREE.Material, count: number) => {
+    const inst = new THREE.InstancedMesh(geo, mat, count);
+    // Instances move every frame, so the cached bounding sphere would go stale.
+    inst.frustumCulled = false;
+    vfxGroup.add(inst);
+    return inst;
+  };
+
+  const bubbleCount = 6;
+  const bubbleInst = addPool(new THREE.SphereGeometry(0.03, 6, 4), bubbleMat, bubbleCount);
+  const bubbles = Array.from({ length: bubbleCount }, (_, i) => {
+    const a = seededRand(i * 5.1) * Math.PI * 2;
+    const r = 0.04 + seededRand(i * 9.3) * 0.18;
+    return {
+      ox: cauldron.position.x + Math.cos(a) * r,
+      oz: cauldron.position.z + Math.sin(a) * r,
+      life: 1.1 + (i % 3) * 0.35,
+      phase: i * 0.43,
+    };
+  });
+
+  const steamCount = 5;
+  const steamInst = addPool(new THREE.IcosahedronGeometry(0.08, 0), steamMat, steamCount);
+  const steam = Array.from({ length: steamCount }, (_, i) => ({
+    life: 2.6 + (i % 2) * 0.7,
+    phase: i * 0.61,
+  }));
+
+  const moteCount = 10;
+  const moteInst = addPool(new THREE.OctahedronGeometry(0.018, 0), moteMat, moteCount);
+  const crateOrigin = new THREE.Vector3(crate.position.x, 0.45, crate.position.z);
+  const mortarOrigin = new THREE.Vector3(mortarCenter.x, TABLE_TOP + 0.1, mortarCenter.z);
+  const motes = Array.from({ length: moteCount }, (_, i) => ({
+    origin: i % 3 === 0 ? mortarOrigin : crateOrigin,
+    ox: (seededRand(i * 2.3) - 0.5) * 0.3,
+    oz: (seededRand(i * 4.7) - 0.5) * 0.25,
+    life: 3.2 + (i % 3) * 0.6,
+    phase: i * 0.77,
+  }));
+
+  // --- 7. Procedural Grinding & Idle Animation ---
+  const GRIND_PERIOD = 1.6; // seconds per pestle revolution
+  const GLANCE_PERIOD = 10.0;
+  const shoulder = new THREE.Vector3();
+  const elbow = new THREE.Vector3();
+  const handPos = new THREE.Vector3();
+  const handTarget = new THREE.Vector3();
+  const pestleTip = new THREE.Vector3();
+  const pestleDir = new THREE.Vector3();
+
+  const poseArm = (
+    arm: { upper: THREE.Object3D; fore: THREE.Object3D; hand: THREE.Object3D },
+    shoulderLocal: THREE.Vector3,
+    pole: THREE.Vector3
+  ) => {
+    shoulder.copy(shoulderLocal).applyMatrix4(upperBody.matrix);
+    solveTwoBoneArm(shoulder, handTarget, UPPER_LEN, FORE_LEN, pole, elbow, handPos);
+    alignSegmentDown(arm.upper, shoulder, elbow);
+    alignSegmentDown(arm.fore, elbow, handPos);
+    arm.hand.position.copy(handPos);
+  };
+
+  let time = 0;
+
+  const pose = () => {
+    // Breathing + slight forward lean over the bench
+    const breath = Math.sin(time * 1.8);
+    upperBody.position.y = 0.95 + breath * 0.008;
+    upperBody.rotation.x = 0.07 + breath * 0.01;
+    upperBody.updateMatrix();
+
+    // Head looks down at the mortar, glancing up toward the plaza once per cycle
+    const g = time % GLANCE_PERIOD;
+    const glance = g > 6.5 && g < 8.5 ? Math.sin(((g - 6.5) / 2.0) * Math.PI) : 0;
+    headGroup.rotation.x = 0.38 - glance * 0.45 + Math.sin(time * 1.2) * 0.02;
+    headGroup.rotation.y = glance * 0.12;
+    headGroup.rotation.z = glance * 0.06;
+
+    braidGroup.rotation.z = Math.sin(time * 1.3) * 0.025;
+    braidGroup.rotation.x = Math.sin(time * 1.8 + 0.5) * 0.02;
+
+    // Pestle traces a circle inside the mortar; the right hand grips its upper shaft
+    const a = (time / GRIND_PERIOD) * Math.PI * 2;
+    const ca = Math.cos(a);
+    const sa = Math.sin(a);
+    pestleTip.set(mortarCenter.x + ca * 0.022, mortarCenter.y + 0.075, mortarCenter.z + sa * 0.022);
+    handTarget.set(
+      mortarCenter.x + ca * 0.05,
+      mortarCenter.y + 0.19 + Math.sin(a * 2) * 0.008,
+      mortarCenter.z + sa * 0.05
+    );
+    pestle.position.copy(pestleTip);
+    pestleDir.subVectors(handTarget, pestleTip).normalize();
+    pestle.quaternion.setFromUnitVectors(LYRA_UP, pestleDir);
+    poseArm(armR, shoulderLocalR, poleR);
+
+    // Left hand steadies the mortar rim
+    handTarget.set(mortarCenter.x - 0.105, mortarCenter.y + 0.065 + sa * 0.004, mortarCenter.z - 0.005);
+    poseArm(armL, shoulderLocalL, poleL);
+
+    // Glow accents: mash pulses once per revolution, brew breathes, coals flicker
+    mashMat.emissiveIntensity = 0.15 + Math.pow(Math.max(0, sa), 8) * 0.6;
+    brewMat.emissiveIntensity = 0.55 + Math.sin(time * 2.2) * 0.15;
+    coalMat.color.setRGB(1, 0.38 + Math.sin(time * 7.3) * 0.06 + Math.sin(time * 3.1) * 0.04, 0.1);
+
+    dryingBundles.forEach((pivot, i) => {
+      pivot.rotation.z = Math.sin(time * 0.9 + i * 1.3) * 0.05;
+      pivot.rotation.x = Math.sin(time * 0.7 + i) * 0.03;
+    });
+
+    bubbles.forEach((b, i) => {
+      const u = ((time + b.phase) % b.life) / b.life;
+      setInstance(bubbleInst, i, b.ox, BREW_Y + 0.01 + u * 0.05, b.oz, u < 0.9 ? 0.3 + u * 0.9 : 0.001);
+    });
+    bubbleInst.instanceMatrix.needsUpdate = true;
+
+    steam.forEach((s, i) => {
+      const u = ((time + s.phase) % s.life) / s.life;
+      setInstance(
+        steamInst,
+        i,
+        cauldron.position.x + Math.sin(time * 0.6 + i * 1.7) * 0.08 * u,
+        BREW_Y + 0.05 + u * 0.9,
+        cauldron.position.z + Math.cos(time * 0.5 + i) * 0.06 * u,
+        Math.max(0.001, (0.4 + u * 1.4) * Math.sin(Math.PI * u))
+      );
+    });
+    steamInst.instanceMatrix.needsUpdate = true;
+
+    motes.forEach((m, i) => {
+      const u = ((time + m.phase) % m.life) / m.life;
+      setInstance(
+        moteInst,
+        i,
+        m.origin.x + m.ox + Math.sin(time * 0.8 + i * 2.1) * 0.15 * u,
+        m.origin.y + u * 1.2,
+        m.origin.z + m.oz + Math.cos(time * 0.7 + i * 1.7) * 0.15 * u,
+        Math.max(0.001, Math.sin(Math.PI * u))
+      );
+    });
+    moteInst.instanceMatrix.needsUpdate = true;
+  };
+
+  // Bake static parts per material (animated subtrees stay live) to keep draw calls low.
+  const matte = {
+    front: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8 }),
+    double: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, side: THREE.DoubleSide }),
+  };
+  const merge = (container: THREE.Object3D, keepLive: THREE.Object3D[] = []) =>
+    mergeStaticMeshes(container, keepLive, matte);
+  merge(charGroup, [upperBody, armR.upper.parent!, armL.upper.parent!]);
+  merge(upperBody, [headGroup, braidGroup]);
+  merge(headGroup);
+  merge(braidGroup);
+  merge(armR.fore);
+  merge(armL.fore);
+  merge(workbench);
+  merge(cauldron);
+  merge(rack, dryingBundles);
+  dryingBundles.forEach((pivot) => merge(pivot));
+  merge(crate);
+
+  pose();
+
+  return {
+    group,
+    update: (dt: number) => {
+      // Closed-form animation from accumulated time: hostile dt values cannot drift or explode.
+      if (Number.isFinite(dt) && dt > 0) time += dt;
+      pose();
+    },
+  };
+}
+
 export function createTownsperson(
   role: 'blacksmith' | 'herbalist' | 'scout'
 ): { group: THREE.Group; update: (dt: number) => void } {
   if (role === 'blacksmith') {
     return createTheronBlacksmith();
   }
+  if (role === 'herbalist') {
+    return createLyraHerbalist();
+  }
 
   const group = new THREE.Group();
 
   const skinMat = new THREE.MeshStandardMaterial({ color: 0xf1c29b, roughness: 0.8 });
 
-  if (role === 'herbalist') {
-    // Lyra the Herbalist
-    const dressMat = new THREE.MeshStandardMaterial({ color: 0x2d6a4f, roughness: 0.75 });
-    const apronMat = new THREE.MeshStandardMaterial({ color: 0xfef3c7, roughness: 0.8 });
-
-    // Dress
-    const dress = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.5, 1.3, 8), dressMat);
-    dress.position.y = 0.65;
-    dress.castShadow = true;
-    group.add(dress);
-
-    const apron = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.6, 0.08), apronMat);
-    apron.position.set(0, 0.8, 0.22);
-    group.add(apron);
-
-    // Head
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 8), skinMat);
-    head.position.y = 1.45;
-    group.add(head);
-
-    // Flower circlet
-    const circlet = new THREE.Mesh(
-      new THREE.TorusGeometry(0.19, 0.03, 6, 12),
-      new THREE.MeshBasicMaterial({ color: 0xa855f7 })
-    );
-    circlet.position.y = 1.55;
-    circlet.rotation.x = Math.PI * 0.5;
-    group.add(circlet);
-
-    // Wicker herb basket
-    const basketMat = new THREE.MeshStandardMaterial({ color: 0x854d0e, roughness: 0.85 });
-    const basket = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.25, 0.25), basketMat);
-    basket.position.set(0.38, 0.65, 0.15);
-    group.add(basket);
-  } else {
+  {
     // Eldrin the Scout
     const leatherMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.8 });
     const cloakMat = new THREE.MeshStandardMaterial({ color: 0x14532d, roughness: 0.75 });

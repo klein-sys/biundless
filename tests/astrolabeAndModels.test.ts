@@ -6,7 +6,9 @@ import {
   createBossModel,
   createPlayerModel,
   createSolsticeHavenVillage,
+  createLyraHerbalist,
   createTheronBlacksmith,
+  createTownsperson,
   createAstrolabeGazebo,
   createArchmageAurelius,
 } from '../src/engine/ProceduralModels';
@@ -226,3 +228,89 @@ describe('Stylized 3D Procedural Models & Solstice Haven Living Town', () => {
   });
 });
 
+describe('Lyra the Herbalist Model & Apothecary Stall', () => {
+  const findByName = (root: THREE.Object3D, name: string): THREE.Object3D => {
+    const found = root.getObjectByName(name);
+    expect(found, `missing ${name}`).toBeDefined();
+    return found!;
+  };
+
+  const renderCost = (root: THREE.Object3D) => {
+    let triangles = 0;
+    let drawCalls = 0;
+    root.traverse((child) => {
+      if (child instanceof THREE.Mesh) {
+        const geo = child.geometry as THREE.BufferGeometry;
+        const tris = (geo.index ? geo.index.count : geo.attributes.position.count) / 3;
+        triangles += child instanceof THREE.InstancedMesh ? tris * child.count : tris;
+        drawCalls++;
+      }
+    });
+    return { triangles, drawCalls };
+  };
+
+  it('builds the articulated rig with workbench, mortar, pestle, cauldron and drying rack', () => {
+    const lyra = createLyraHerbalist();
+    expect(lyra.group).toBeInstanceOf(THREE.Group);
+    for (const name of [
+      'lyra_body',
+      'lyra_head',
+      'lyra_pestle_arm',
+      'lyra_steady_arm',
+      'lyra_workbench',
+      'lyra_mortar',
+      'lyra_pestle',
+      'lyra_cauldron',
+      'lyra_drying_rack',
+      'lyra_vfx',
+    ]) {
+      findByName(lyra.group, name);
+    }
+  });
+
+  it('is what the village spawns for the herbalist role', () => {
+    const herbalist = createTownsperson('herbalist');
+    expect(herbalist.group.getObjectByName('lyra_mortar')).toBeDefined();
+  });
+
+  it('keeps the pestle tip inside the mortar bowl throughout the grinding cycle', () => {
+    const lyra = createLyraHerbalist();
+    const mortar = findByName(lyra.group, 'lyra_mortar');
+    const pestle = findByName(lyra.group, 'lyra_pestle');
+    const mortarPos = new THREE.Vector3();
+    mortar.getWorldPosition(mortarPos);
+    for (let i = 0; i < 120; i++) {
+      lyra.update(1 / 30);
+      const dx = pestle.position.x - mortarPos.x;
+      const dz = pestle.position.z - mortarPos.z;
+      expect(Math.hypot(dx, dz)).toBeLessThan(0.06);
+      expect(pestle.position.y).toBeGreaterThan(mortarPos.y);
+      expect(pestle.position.y).toBeLessThan(mortarPos.y + 0.1);
+    }
+  });
+
+  it('keeps every transform finite under hostile delta times', () => {
+    const lyra = createLyraHerbalist();
+    for (const dt of [0.016, 5, 0, -1, Number.NaN, Number.POSITIVE_INFINITY, 1234.5, 0.001]) {
+      lyra.update(dt);
+    }
+    lyra.group.traverse((child) => {
+      const p = child.position;
+      const q = child.quaternion;
+      const s = child.scale;
+      for (const v of [p.x, p.y, p.z, q.x, q.y, q.z, q.w, s.x, s.y, s.z]) {
+        expect(Number.isFinite(v)).toBe(true);
+      }
+      if (child instanceof THREE.InstancedMesh) {
+        for (const v of child.instanceMatrix.array) expect(Number.isFinite(v)).toBe(true);
+      }
+    });
+  });
+
+  it('stays within the mobile render budget (static props baked, VFX instanced)', () => {
+    const lyra = createLyraHerbalist();
+    const cost = renderCost(lyra.group);
+    expect(cost.triangles).toBeLessThan(7000);
+    expect(cost.drawCalls).toBeLessThanOrEqual(40);
+  });
+});
