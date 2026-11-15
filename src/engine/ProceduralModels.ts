@@ -2086,54 +2086,444 @@ export function createArchmageAurelius(): { group: THREE.Group; update: (dt: num
   };
 }
 
+export function createTheronBlacksmith(): { group: THREE.Group; update: (dt: number) => void } {
+  const group = new THREE.Group();
+
+  // --- Stylized Palette Materials ---
+  const skinMat = new THREE.MeshStandardMaterial({ color: 0xdeb897, roughness: 0.7 });
+  const hairMat = new THREE.MeshStandardMaterial({ color: 0x3a2013, roughness: 0.85 });
+  const beardMat = new THREE.MeshStandardMaterial({ color: 0x321a0d, roughness: 0.85 });
+  const goldTrimMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, metalness: 0.8, roughness: 0.25 });
+  const tunicMat = new THREE.MeshStandardMaterial({ color: 0xede2cb, roughness: 0.8 });
+  const apronMat = new THREE.MeshStandardMaterial({ color: 0x542c16, roughness: 0.65 });
+  const beltMat = new THREE.MeshStandardMaterial({ color: 0x2e180d, roughness: 0.7 });
+  const pantsMat = new THREE.MeshStandardMaterial({ color: 0x292524, roughness: 0.85 });
+  const bootsMat = new THREE.MeshStandardMaterial({ color: 0x1c1917, roughness: 0.6 });
+  const bracersMat = new THREE.MeshStandardMaterial({ color: 0x451a03, roughness: 0.7 });
+  const ironMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, metalness: 0.85, roughness: 0.35 });
+  const polishedSteelMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.9, roughness: 0.2 });
+  const timberMat = new THREE.MeshStandardMaterial({ color: 0x5c4033, roughness: 0.9 });
+  const stoneMat = new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.85 });
+  const charcoalMat = new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.95 });
+  const hotIronMat = new THREE.MeshStandardMaterial({
+    color: 0xff3b00,
+    emissive: 0xff4500,
+    emissiveIntensity: 1.0,
+    roughness: 0.3,
+  });
+
+  // --- 1. Theron Character Rig ---
+  const charGroup = new THREE.Group();
+  group.add(charGroup);
+
+  // Boots & Legs
+  const leftLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.1, 0.65, 8), pantsMat);
+  leftLeg.position.set(-0.2, 0.45, 0);
+  leftLeg.castShadow = true;
+  charGroup.add(leftLeg);
+
+  const rightLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.1, 0.65, 8), pantsMat);
+  rightLeg.position.set(0.2, 0.45, 0);
+  rightLeg.castShadow = true;
+  charGroup.add(rightLeg);
+
+  const leftBoot = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.22, 0.36), bootsMat);
+  leftBoot.position.set(-0.2, 0.11, 0.05);
+  leftBoot.castShadow = true;
+  charGroup.add(leftBoot);
+
+  const rightBoot = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.22, 0.36), bootsMat);
+  rightBoot.position.set(0.2, 0.11, 0.05);
+  rightBoot.castShadow = true;
+  charGroup.add(rightBoot);
+
+  // Boot buckles
+  const leftBuckle = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.04, 0.06), goldTrimMat);
+  leftBuckle.position.set(-0.2, 0.18, 0.2);
+  charGroup.add(leftBuckle);
+
+  const rightBuckle = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.04, 0.06), goldTrimMat);
+  rightBuckle.position.set(0.2, 0.18, 0.2);
+  charGroup.add(rightBuckle);
+
+  // Torso / Tunic (Broad muscular smith chest)
+  const torsoGroup = new THREE.Group();
+  torsoGroup.position.y = 1.1;
+  charGroup.add(torsoGroup);
+
+  const chest = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.32, 0.68, 8), tunicMat);
+  chest.castShadow = true;
+  torsoGroup.add(chest);
+
+  // Stitched Heavy Leather Apron (Front curved apron + bib)
+  const apronBib = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.52, 0.12), apronMat);
+  apronBib.position.set(0, 0.02, 0.26);
+  torsoGroup.add(apronBib);
+
+  const apronSkirt = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.5, 0.08), apronMat);
+  apronSkirt.position.set(0, -0.42, 0.24);
+  torsoGroup.add(apronSkirt);
+
+  // Brass Rivets & Buckles on Apron
+  for (let r = 0; r < 4; r++) {
+    const rx = (r % 2 === 0 ? -1 : 1) * 0.2;
+    const ry = (r < 2 ? 0.22 : -0.18);
+    const rivet = new THREE.Mesh(new THREE.SphereGeometry(0.025, 6, 6), goldTrimMat);
+    rivet.position.set(rx, ry, 0.33);
+    torsoGroup.add(rivet);
+  }
+
+  // Work Tool Belt with Brass Buckle
+  const belt = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 0.1, 8), beltMat);
+  belt.position.y = -0.22;
+  torsoGroup.add(belt);
+
+  const beltBuckle = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 0.05), goldTrimMat);
+  beltBuckle.position.set(0, -0.22, 0.36);
+  torsoGroup.add(beltBuckle);
+
+  // Neck
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.16, 0.2, 8), skinMat);
+  neck.position.y = 0.42;
+  torsoGroup.add(neck);
+
+  // Head & Stylized Hair/Beard
+  const headGroup = new THREE.Group();
+  headGroup.position.set(0, 0.62, 0.02);
+  torsoGroup.add(headGroup);
+
+  const headMesh = new THREE.Mesh(new THREE.SphereGeometry(0.2, 10, 8), skinMat);
+  headMesh.castShadow = true;
+  headGroup.add(headMesh);
+
+  // Sculpted Swept-back Hair
+  const hairCrown = new THREE.Mesh(new THREE.SphereGeometry(0.22, 8, 8, 0, Math.PI * 2, 0, Math.PI * 0.55), hairMat);
+  hairCrown.position.set(0, 0.04, -0.02);
+  headGroup.add(hairCrown);
+
+  const hairTail = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.35, 6), hairMat);
+  hairTail.position.set(0, -0.06, -0.2);
+  hairTail.rotation.x = -Math.PI * 0.4;
+  headGroup.add(hairTail);
+
+  // Braided Dwarf/Viking Beard with Gold Rings
+  const beardMain = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.6, 8), beardMat);
+  beardMain.position.set(0, -0.26, 0.16);
+  beardMain.rotation.x = -Math.PI * 0.15;
+  headGroup.add(beardMain);
+
+  const beardBraidLeft = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.025, 0.35, 6), beardMat);
+  beardBraidLeft.position.set(-0.08, -0.42, 0.2);
+  headGroup.add(beardBraidLeft);
+
+  const beardBraidRight = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.025, 0.35, 6), beardMat);
+  beardBraidRight.position.set(0.08, -0.42, 0.2);
+  headGroup.add(beardBraidRight);
+
+  const goldRingLeft = new THREE.Mesh(new THREE.TorusGeometry(0.04, 0.015, 6, 8), goldTrimMat);
+  goldRingLeft.position.set(-0.08, -0.36, 0.2);
+  goldRingLeft.rotation.x = Math.PI * 0.5;
+  headGroup.add(goldRingLeft);
+
+  const goldRingRight = new THREE.Mesh(new THREE.TorusGeometry(0.04, 0.015, 6, 8), goldTrimMat);
+  goldRingRight.position.set(0.08, -0.36, 0.2);
+  goldRingRight.rotation.x = Math.PI * 0.5;
+  headGroup.add(goldRingRight);
+
+  // Left Arm (Holding long blacksmith tongs toward anvil)
+  const leftArmGroup = new THREE.Group();
+  leftArmGroup.position.set(-0.4, 0.24, 0);
+  torsoGroup.add(leftArmGroup);
+
+  const leftShoulderSleeve = new THREE.Mesh(new THREE.TorusGeometry(0.13, 0.04, 6, 8), tunicMat);
+  leftShoulderSleeve.position.set(0, 0, 0);
+  leftArmGroup.add(leftShoulderSleeve);
+
+  const leftBicep = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.1, 0.35, 8), skinMat);
+  leftBicep.position.set(-0.05, -0.15, 0.1);
+  leftBicep.rotation.set(0.4, 0, -0.3);
+  leftArmGroup.add(leftBicep);
+
+  const leftForearm = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.08, 0.38, 8), bracersMat);
+  leftForearm.position.set(-0.06, -0.32, 0.32);
+  leftForearm.rotation.set(1.1, 0.4, -0.2);
+  leftArmGroup.add(leftForearm);
+
+  // Long Smithing Tongs clamped onto the hot billet
+  const tongsHaft = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.85, 6), ironMat);
+  tongsHaft.position.set(0.12, -0.35, 0.65);
+  tongsHaft.rotation.set(1.5, 0.6, 0);
+  leftArmGroup.add(tongsHaft);
+
+  // Right Arm (Articulated Pivoting Hammer Arm)
+  const hammerArmGroup = new THREE.Group();
+  hammerArmGroup.name = 'theron_hammer_arm';
+  hammerArmGroup.position.set(0.42, 0.24, 0);
+  torsoGroup.add(hammerArmGroup);
+
+  const rightShoulderSleeve = new THREE.Mesh(new THREE.TorusGeometry(0.13, 0.04, 6, 8), tunicMat);
+  hammerArmGroup.add(rightShoulderSleeve);
+
+  const rightBicep = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.11, 0.36, 8), skinMat);
+  rightBicep.position.set(0.04, -0.15, 0);
+  hammerArmGroup.add(rightBicep);
+
+  const rightForearm = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.09, 0.38, 8), bracersMat);
+  rightForearm.position.set(0.08, -0.38, 0.12);
+  rightForearm.rotation.x = 0.5;
+  hammerArmGroup.add(rightForearm);
+
+  // Heavy Forged Smithing Hammer
+  const hammerHaft = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.72, 6), timberMat);
+  hammerHaft.position.set(0.1, -0.5, 0.3);
+  hammerHaft.rotation.x = Math.PI * 0.45;
+  hammerArmGroup.add(hammerHaft);
+
+  const hammerHead = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.15, 0.28), ironMat);
+  hammerHead.position.set(0.1, -0.48, 0.62);
+  hammerArmGroup.add(hammerHead);
+
+  const hammerFace = new THREE.Mesh(new THREE.BoxGeometry(0.142, 0.152, 0.04), polishedSteelMat);
+  hammerFace.position.set(0.1, -0.48, 0.76);
+  hammerArmGroup.add(hammerFace);
+
+  // --- 2. Authentic Smith's Anvil & Timber Base ---
+  const anvilStation = new THREE.Group();
+  anvilStation.name = 'theron_anvil';
+  anvilStation.position.set(0.62, 0, 0.42);
+  group.add(anvilStation);
+
+  // Iron-Banded Oak Tree Stump Plinth
+  const stump = new THREE.Mesh(new THREE.CylinderGeometry(0.48, 0.54, 0.65, 10), timberMat);
+  stump.position.y = 0.325;
+  stump.receiveShadow = true;
+  anvilStation.add(stump);
+
+  const stumpBand1 = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.03, 6, 12), ironMat);
+  stumpBand1.position.y = 0.5;
+  stumpBand1.rotation.x = Math.PI * 0.5;
+  anvilStation.add(stumpBand1);
+
+  const stumpBand2 = new THREE.Mesh(new THREE.TorusGeometry(0.52, 0.03, 6, 12), ironMat);
+  stumpBand2.position.y = 0.15;
+  stumpBand2.rotation.x = Math.PI * 0.5;
+  anvilStation.add(stumpBand2);
+
+  // Cast Iron Anvil
+  const anvilGroup = new THREE.Group();
+  anvilGroup.position.y = 0.65;
+  anvilStation.add(anvilGroup);
+
+  // Anvil Foot / Base
+  const anvilBase = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.1, 0.65), ironMat);
+  anvilBase.position.y = 0.05;
+  anvilBase.castShadow = true;
+  anvilGroup.add(anvilBase);
+
+  // Anvil Waist (Arched narrow middle)
+  const anvilWaist = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.24, 0.25, 8), ironMat);
+  anvilWaist.position.y = 0.2;
+  anvilGroup.add(anvilWaist);
+
+  // Anvil Table (Hardened steel flat top)
+  const anvilTable = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.14, 0.52), ironMat);
+  anvilTable.position.set(0, 0.35, -0.04);
+  anvilTable.castShadow = true;
+  anvilGroup.add(anvilTable);
+
+  const anvilFace = new THREE.Mesh(new THREE.BoxGeometry(0.33, 0.02, 0.5), polishedSteelMat);
+  anvilFace.position.set(0, 0.42, -0.04);
+  anvilGroup.add(anvilFace);
+
+  // Anvil Conical Horn (Bickern)
+  const anvilHorn = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.38, 8), ironMat);
+  anvilHorn.position.set(0, 0.36, 0.4);
+  anvilHorn.rotation.x = Math.PI * 0.5;
+  anvilHorn.castShadow = true;
+  anvilGroup.add(anvilHorn);
+
+  // Glowing Heated Steel Billet on Anvil
+  const hotBillet = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.07, 0.32), hotIronMat);
+  hotBillet.position.set(0, 0.46, -0.02);
+  anvilGroup.add(hotBillet);
+
+  // --- 3. Stone Forge Hearth Station ---
+  const forgeStation = new THREE.Group();
+  forgeStation.name = 'theron_forge';
+  forgeStation.position.set(-1.05, 0, -0.45);
+  group.add(forgeStation);
+
+  // Stone Basin (Curved riverstone hearth)
+  const stoneBasin = new THREE.Mesh(new THREE.CylinderGeometry(0.75, 0.85, 0.7, 10), stoneMat);
+  stoneBasin.position.y = 0.35;
+  stoneBasin.castShadow = true;
+  stoneBasin.receiveShadow = true;
+  forgeStation.add(stoneBasin);
+
+  // Fire Pot Rim
+  const fireRim = new THREE.Mesh(new THREE.TorusGeometry(0.65, 0.08, 6, 12), ironMat);
+  fireRim.position.y = 0.7;
+  fireRim.rotation.x = Math.PI * 0.5;
+  forgeStation.add(fireRim);
+
+  // Jagged Coals & Embers
+  const charcoalBed = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.55, 0.15, 8), charcoalMat);
+  charcoalBed.position.y = 0.72;
+  forgeStation.add(charcoalBed);
+
+  for (let c = 0; c < 8; c++) {
+    const angle = (c / 8) * Math.PI * 2;
+    const r = 0.2 + (c % 3) * 0.12;
+    const ember = new THREE.Mesh(
+      new THREE.DodecahedronGeometry(0.08, 0),
+      new THREE.MeshBasicMaterial({ color: (c % 2 === 0 ? 0xff4500 : 0xff7700) })
+    );
+    ember.position.set(Math.cos(angle) * r, 0.8, Math.sin(angle) * r);
+    forgeStation.add(ember);
+  }
+
+  // Stone Chimney Hood
+  const forgeHood = new THREE.Mesh(new THREE.ConeGeometry(0.7, 1.2, 8), stoneMat);
+  forgeHood.position.set(0, 1.85, 0);
+  forgeHood.castShadow = true;
+  forgeStation.add(forgeHood);
+
+  const forgePipe = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 1.4, 8), ironMat);
+  forgePipe.position.set(0, 2.9, 0);
+  forgePipe.castShadow = true;
+  forgeStation.add(forgePipe);
+
+  // --- 4. Slack Quenching Barrel Tub ---
+  const barrelGroup = new THREE.Group();
+  barrelGroup.position.set(1.15, 0, -0.35);
+  group.add(barrelGroup);
+
+  const barrelStaves = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.36, 0.6, 10), timberMat);
+  barrelStaves.position.y = 0.3;
+  barrelStaves.castShadow = true;
+  barrelGroup.add(barrelStaves);
+
+  const barrelBand1 = new THREE.Mesh(new THREE.TorusGeometry(0.41, 0.02, 6, 12), ironMat);
+  barrelBand1.position.y = 0.48;
+  barrelBand1.rotation.x = Math.PI * 0.5;
+  barrelGroup.add(barrelBand1);
+
+  const barrelWater = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.38, 0.38, 0.02, 10),
+    new THREE.MeshStandardMaterial({ color: 0x1d4ed8, roughness: 0.15, metalness: 0.1, transparent: true, opacity: 0.85 })
+  );
+  barrelWater.position.y = 0.55;
+  barrelGroup.add(barrelWater);
+
+  // --- 5. Spark Particle System (Pooled) ---
+  const SPARK_COUNT = 14;
+  const sparkMat = new THREE.MeshBasicMaterial({ color: 0xffea00 });
+  const sparkGeo = new THREE.TetrahedronGeometry(0.035, 0);
+  const sparks: { mesh: THREE.Mesh; vx: number; vy: number; vz: number; life: number }[] = [];
+
+  const sparkGroup = new THREE.Group();
+  group.add(sparkGroup);
+
+  for (let s = 0; s < SPARK_COUNT; s++) {
+    const mesh = new THREE.Mesh(sparkGeo, sparkMat);
+    mesh.visible = false;
+    sparkGroup.add(mesh);
+    sparks.push({ mesh, vx: 0, vy: 0, vz: 0, life: 0 });
+  }
+
+  function emitSparks(contactPos: THREE.Vector3) {
+    sparks.forEach((sp, idx) => {
+      sp.mesh.position.copy(contactPos);
+      sp.mesh.visible = true;
+      const angle = (idx / SPARK_COUNT) * Math.PI * 2 + (Math.random() - 0.5) * 0.5;
+      const speed = 1.2 + Math.random() * 2.2;
+      sp.vx = Math.cos(angle) * speed * 0.8;
+      sp.vy = 1.5 + Math.random() * 2.0;
+      sp.vz = Math.sin(angle) * speed * 0.8;
+      sp.life = 0.35 + Math.random() * 0.2;
+    });
+  }
+
+  // --- 6. Procedural Rhythmic Hammer Animation Loop ---
+  let cycleTime = 0;
+  const CYCLE_DURATION = 1.35; // seconds per full swing
+  let struckThisCycle = false;
+
+  const billetWorldPos = new THREE.Vector3(0.62, 1.12, 0.4);
+
+  return {
+    group,
+    update: (dt: number) => {
+      cycleTime += dt;
+      const t = cycleTime % CYCLE_DURATION;
+
+      // Subtle breathing motion
+      torsoGroup.position.y = 1.1 + Math.sin(cycleTime * 2.0) * 0.015;
+      headGroup.rotation.x = Math.sin(cycleTime * 1.5) * 0.04;
+
+      // Hammer swing phase timing
+      if (t < 0.7) {
+        struckThisCycle = false;
+        const progress = t / 0.7;
+        const eased = Math.sin(progress * Math.PI * 0.5);
+        hammerArmGroup.rotation.x = -eased * 1.35; // Lift arm back
+        hammerArmGroup.rotation.z = -eased * 0.3;
+        hotIronMat.emissiveIntensity = 0.8 + Math.sin(cycleTime * 4.0) * 0.2;
+      } else if (t < 0.85) {
+        // Hold at apex
+        hammerArmGroup.rotation.x = -1.35;
+        hammerArmGroup.rotation.z = -0.3;
+      } else if (t < 0.96) {
+        // Power strike downward!
+        const strikeProg = (t - 0.85) / 0.11;
+        const strikeEased = strikeProg * strikeProg; // Acceleration
+        hammerArmGroup.rotation.x = -1.35 + strikeEased * 1.55;
+        hammerArmGroup.rotation.z = -0.3 + strikeEased * 0.35;
+
+        // Strike contact point!
+        if (strikeProg >= 0.85 && !struckThisCycle) {
+          struckThisCycle = true;
+          hotIronMat.emissiveIntensity = 2.8; // Bright flash
+          emitSparks(billetWorldPos);
+          torsoGroup.position.y -= 0.04; // Impact recoil
+        }
+      } else {
+        // Settle & recover
+        hammerArmGroup.rotation.x = 0.2;
+        hammerArmGroup.rotation.z = 0.05;
+        hotIronMat.emissiveIntensity = Math.max(0.8, hotIronMat.emissiveIntensity - dt * 4.0);
+      }
+
+      // Update flying sparks
+      sparks.forEach((sp) => {
+        if (sp.life > 0) {
+          sp.life -= dt;
+          sp.vy -= 9.8 * dt; // Gravity
+          sp.mesh.position.x += sp.vx * dt;
+          sp.mesh.position.y += sp.vy * dt;
+          sp.mesh.position.z += sp.vz * dt;
+          sp.mesh.scale.setScalar(Math.max(0.1, sp.life / 0.5));
+          if (sp.life <= 0 || sp.mesh.position.y <= 0) {
+            sp.mesh.visible = false;
+          }
+        }
+      });
+    },
+  };
+}
+
 export function createTownsperson(
   role: 'blacksmith' | 'herbalist' | 'scout'
 ): { group: THREE.Group; update: (dt: number) => void } {
+  if (role === 'blacksmith') {
+    return createTheronBlacksmith();
+  }
+
   const group = new THREE.Group();
 
   const skinMat = new THREE.MeshStandardMaterial({ color: 0xf1c29b, roughness: 0.8 });
 
-  if (role === 'blacksmith') {
-    // Theron the Blacksmith
-    const apronMat = new THREE.MeshStandardMaterial({ color: 0x5c3317, roughness: 0.85 });
-    const shirtMat = new THREE.MeshStandardMaterial({ color: 0xdfd3be, roughness: 0.7 });
-
-    // Torso
-    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.75, 0.4), shirtMat);
-    torso.position.y = 1.05;
-    torso.castShadow = true;
-    group.add(torso);
-
-    // Leather Apron
-    const apron = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.7, 0.1), apronMat);
-    apron.position.set(0, 0.95, 0.2);
-    group.add(apron);
-
-    // Head
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 8), skinMat);
-    head.position.y = 1.6;
-    group.add(head);
-
-    // Hammer in hand
-    const hammer = new THREE.Mesh(
-      new THREE.BoxGeometry(0.18, 0.12, 0.12),
-      new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.7 })
-    );
-    hammer.position.set(0.45, 0.8, 0.2);
-    group.add(hammer);
-
-    // Stone Anvil beside him
-    const anvilMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, metalness: 0.8, roughness: 0.4 });
-    const anvil = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.6, 0.8), anvilMat);
-    anvil.position.set(0.7, 0.3, 0.3);
-    group.add(anvil);
-
-    // Glowing hot iron billet
-    const hotIronMat = new THREE.MeshBasicMaterial({ color: 0xff5722 });
-    const hotIron = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.08, 0.35), hotIronMat);
-    hotIron.position.set(0.7, 0.64, 0.3);
-    group.add(hotIron);
-  } else if (role === 'herbalist') {
+  if (role === 'herbalist') {
     // Lyra the Herbalist
     const dressMat = new THREE.MeshStandardMaterial({ color: 0x2d6a4f, roughness: 0.75 });
     const apronMat = new THREE.MeshStandardMaterial({ color: 0xfef3c7, roughness: 0.8 });

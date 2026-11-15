@@ -6,6 +6,7 @@ import {
   createBossModel,
   createPlayerModel,
   createSolsticeHavenVillage,
+  createTheronBlacksmith,
 } from '../src/engine/ProceduralModels';
 
 describe('Astrolabe Grimoire SVG Plotter', () => {
@@ -140,6 +141,35 @@ describe('Stylized 3D Procedural Models & Solstice Haven Living Town', () => {
       village.update(0.016);
       village.update(0.5);
       village.update(1.2);
+    }).not.toThrow();
+  });
+
+  it('creates an articulated stylized Theron rig with forge, anvil, and spark systems', () => {
+    const smith = createTheronBlacksmith();
+    expect(smith.group).toBeInstanceOf(THREE.Group);
+
+    let foundAnvil = false;
+    let foundForge = false;
+    let foundHammer = false;
+
+    smith.group.traverse((child) => {
+      if (child.name === 'theron_anvil') foundAnvil = true;
+      if (child.name === 'theron_forge') foundForge = true;
+      if (child.name === 'theron_hammer_arm') foundHammer = true;
+    });
+
+    expect(foundAnvil).toBe(true);
+    expect(foundForge).toBe(true);
+    expect(foundHammer).toBe(true);
+  });
+
+  it('steps the rhythmic hammering animation cycle without throwing', () => {
+    const smith = createTheronBlacksmith();
+    expect(() => {
+      smith.update(0.016);
+      smith.update(0.1);
+      smith.update(0.5);
+      smith.update(1.0);
     }).not.toThrow();
   });
 });
