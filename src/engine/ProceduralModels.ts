@@ -21,6 +21,7 @@ import {
   createWaterStreamMaterial,
 } from './Shaders';
 import { alignSegmentDown, mergeStaticMeshes, solveTwoBoneArm } from './SculptKit';
+import { createWhisperingGlade, type WhisperingGlade } from './WhisperingGlade';
 
 export { createBossModel, type BossAnimContext, type BossRig } from './BossModels';
 
@@ -31,6 +32,7 @@ export interface WaypointCrystal {
 }
 
 export interface ArenaBundle {
+  readonly glade: WhisperingGlade;
   readonly group: THREE.Group;
   readonly fogGates: { readonly bossId: BossId; readonly group: THREE.Group; readonly curtainMat: THREE.ShaderMaterial; readonly position: THREE.Vector3 }[];
   readonly waypoints: WaypointCrystal[];
@@ -79,30 +81,6 @@ export const ARENA_RADIUS = WORLD_PLAYABLE_RADIUS;
 function seededRand(seed: number): number {
   const s = Math.sin(seed * 12.9898 + 78.233) * 43758.5453;
   return s - Math.floor(s);
-}
-
-function createSunlitArchSpan(
-  spanWidth: number,
-  stoneMat: THREE.Material,
-  broken: boolean,
-): THREE.Group {
-  const arch = new THREE.Group();
-  const half = spanWidth * 0.5;
-  const steps = broken ? 6 : 11;
-
-  for (let i = 0; i < steps; i++) {
-    if (broken && (i === 4 || i === 5)) continue;
-    const t = i / 10;
-    const angle = t * Math.PI;
-    const x = -Math.cos(angle) * half;
-    const y = Math.sin(angle) * 2.4;
-    const block = new THREE.Mesh(new THREE.BoxGeometry(1.35, 0.72, 0.95), stoneMat);
-    block.position.set(x, y, 0);
-    block.rotation.z = (t - 0.5) * -1.25;
-    block.castShadow = true;
-    arch.add(block);
-  }
-  return arch;
 }
 
 export function createArenaEnvironment(): ArenaBundle {
@@ -375,91 +353,8 @@ export function createArenaEnvironment(): ArenaBundle {
   }
 
   // 7. Biome-Specific Scenic Architecture
-  // 7A. Northwest: Whispering Glade (Sylvan Druidic Ring & Wind-Chime Monoliths)
-  {
-    const lm = LANDMARK_BY_ID.witch;
-    const gladeFloor = new THREE.Mesh(
-      new THREE.RingGeometry(11.0, 13.5, 48),
-      new THREE.MeshStandardMaterial({
-        color: 0x8ad0ff,
-        emissive: 0x2d7ab8,
-        emissiveIntensity: 0.45,
-        roughness: 0.3,
-      }),
-    );
-    gladeFloor.rotation.x = -Math.PI / 2;
-    gladeFloor.position.set(lm.x, lm.baseHeight + 0.04, lm.z);
-    group.add(gladeFloor);
-
-    const innerRunes = new THREE.Mesh(
-      new THREE.RingGeometry(6.5, 7.2, 36),
-      new THREE.MeshStandardMaterial({
-        color: 0x7fd4ff,
-        emissive: 0x4caae8,
-        emissiveIntensity: 0.8,
-      }),
-    );
-    innerRunes.rotation.x = -Math.PI / 2;
-    innerRunes.position.set(lm.x, lm.baseHeight + 0.05, lm.z);
-    group.add(innerRunes);
-
-    // 8 Ancient Sylvan Megaliths with Ivy and Hanging Wisp Lanterns
-    for (let i = 0; i < 8; i++) {
-      const a = (i / 8) * Math.PI * 2;
-      const ax = lm.x + Math.cos(a) * 15.2;
-      const az = lm.z + Math.sin(a) * 15.2;
-      const ay = getTerrainHeight(ax, az);
-
-      const megalith = new THREE.Group();
-      megalith.position.set(ax, ay, az);
-      megalith.lookAt(lm.x, ay, lm.z);
-
-      const pillarHeight = 4.8 + (i % 2) * 1.4;
-      const pillar = new THREE.Mesh(
-        new THREE.BoxGeometry(0.85, pillarHeight, 0.75),
-        stoneMat,
-      );
-      pillar.position.y = pillarHeight * 0.5;
-      pillar.castShadow = true;
-      megalith.add(pillar);
-
-      // Ivy foliage banding
-      const ivy = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.55, 0.65, 1.8, 7),
-        new THREE.MeshStandardMaterial({ color: 0x2c5c36, roughness: 0.9 }),
-      );
-      ivy.position.y = pillarHeight * 0.45;
-      megalith.add(ivy);
-
-      // Hanging Wisp Lantern
-      const lanternArm = new THREE.Mesh(
-        new THREE.BoxGeometry(0.12, 0.12, 1.1),
-        goldMat,
-      );
-      lanternArm.position.set(0, pillarHeight - 0.2, 0.45);
-      megalith.add(lanternArm);
-
-      const wisp = new THREE.Mesh(
-        new THREE.OctahedronGeometry(0.28, 0),
-        new THREE.MeshStandardMaterial({
-          color: 0x7fd4ff,
-          emissive: 0x4caae8,
-          emissiveIntensity: 1.2,
-        }),
-      );
-      wisp.position.set(0, pillarHeight - 0.7, 0.95);
-      megalith.add(wisp);
-      windChimes.push(wisp);
-
-      if (i % 2 === 0) {
-        const arch = createSunlitArchSpan(3.8, stoneMat, false);
-        arch.position.y = pillarHeight;
-        megalith.add(arch);
-      }
-
-      group.add(megalith);
-    }
-  }
+  const glade = createWhisperingGlade(stoneMat);
+  group.add(glade.group);
 
   // 7B. South: Sunken Sun-Ruins (Excavation Necropolis, Colonnades & Tangent Sundials)
   {
@@ -688,19 +583,23 @@ export function createArenaEnvironment(): ArenaBundle {
   rockInst.castShadow = true;
   rockInst.receiveShadow = true;
   const rDummy = new THREE.Object3D();
+  const witchLandmark = LANDMARK_BY_ID.witch;
+  let rocksPlaced = 0;
   for (let i = 0; i < rockCount; i++) {
     const r = 18 + seededRand(i * 7 + 41) * (WORLD_PLAYABLE_RADIUS - 16);
     const a = seededRand(i * 7 + 42) * Math.PI * 2;
     const x = Math.cos(a) * r;
     const z = Math.sin(a) * r;
+    if (Math.hypot(x - witchLandmark.x, z - witchLandmark.z) < witchLandmark.plateauRadius) continue;
     const y = getTerrainHeight(x, z);
     const s = 0.6 + seededRand(i * 7 + 43) * 1.3;
     rDummy.position.set(x, y + s * 0.25, z);
     rDummy.scale.set(s * 1.3, s * 0.78, s);
     rDummy.rotation.set(seededRand(i) * 0.4, seededRand(i + 1) * 3.1, 0);
     rDummy.updateMatrix();
-    rockInst.setMatrixAt(i, rDummy.matrix);
+    rockInst.setMatrixAt(rocksPlaced++, rDummy.matrix);
   }
+  rockInst.count = rocksPlaced;
   group.add(rockInst);
 
   const flowerCount = 260;
@@ -767,6 +666,7 @@ export function createArenaEnvironment(): ArenaBundle {
 
   return {
     group,
+    glade,
     fogGates,
     waypoints,
     emberPoints,

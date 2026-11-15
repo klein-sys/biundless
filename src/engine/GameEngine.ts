@@ -1455,6 +1455,14 @@ export class GameEngine {
     this.arena.skyMat.uniforms.uTime.value = this.totalTime;
     this.arena.waterMat.uniforms.uTime.value = this.totalTime;
 
+    const boss = this.getActiveBoss();
+    if (boss?.id === 'witch' && boss.phase !== 'IDLE_GUARD' && boss.phase !== 'DEFEATED' &&
+        (boss.activeFunction === 'sin' || boss.activeFunction === 'cos')) {
+      this.arena.glade.updateWave(boss.activeFunction, boss.theta);
+    } else {
+      this.arena.glade.updateWave();
+    }
+
     // Hover and rotate floating waypoints
     this.arena.waypoints.forEach((wp, idx) => {
       wp.mesh.rotation.y += 0.015;
