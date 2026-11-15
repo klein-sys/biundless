@@ -133,6 +133,89 @@ describe('Stylized 3D Procedural Models & Solstice Haven Living Town', () => {
     expect(dragonRig.tailSegments?.length).toBe(5);
   });
 
+  describe('sculpted boss rigs', () => {
+    const BOSS_IDS = ['witch', 'lich', 'dragon'] as const;
+    const PHASES = ['IDLE_GUARD', 'CHANNEL_WAVE', 'PHASE_WARD', 'TELEGRAPH', 'ASYMPTOTE_SURGE', 'STAGGERED', 'DEFEATED'] as const;
+
+    it.each(BOSS_IDS)('%s has no NaN or degenerate vertex data (a single NaN blanks the bloomed frame)', (id) => {
+      const rig = createBossModel(id);
+      rig.root.traverse((child) => {
+        if (!(child instanceof THREE.Mesh)) return;
+        const geo = child.geometry as THREE.BufferGeometry;
+        for (const name of ['position', 'normal', 'color', 'uv']) {
+          const attr = geo.attributes[name];
+          if (!attr) continue;
+          for (const v of Array.from(attr.array as ArrayLike<number>)) expect(Number.isFinite(v)).toBe(true);
+        }
+        const n = geo.attributes.normal;
+        if (n) {
+          for (let i = 0; i < n.count; i++) {
+            expect(Math.hypot(n.getX(i), n.getY(i), n.getZ(i))).toBeGreaterThan(1e-4);
+          }
+        }
+      });
+    });
+
+    it.each(BOSS_IDS)('%s animates every AI phase with finite transforms and updates its pose', (id) => {
+      const rig = createBossModel(id);
+      const dt = 1 / 30;
+      let time = 0;
+      for (const phase of PHASES) {
+        for (let i = 0; i < 20; i++) {
+          time += dt;
+          rig.animate(dt, { time, phase, theta: time, slope: 2 });
+        }
+      }
+      // Hostile frame times must not explode the smoothing.
+      rig.animate(Number.NaN, { time, phase: 'IDLE_GUARD', theta: 0, slope: 0 });
+      rig.animate(50, { time: time + 50, phase: 'TELEGRAPH', theta: 0, slope: 99 });
+      rig.root.updateMatrixWorld(true);
+      rig.root.traverse((child) => {
+        for (const v of child.matrixWorld.elements) expect(Number.isFinite(v)).toBe(true);
+        if (child instanceof THREE.Mesh) {
+          const pos = child.geometry.attributes.position;
+          for (const v of Array.from(pos.array as ArrayLike<number>)) expect(Number.isFinite(v)).toBe(true);
+        }
+      });
+    });
+
+    it.each(BOSS_IDS)('%s stays within the boss render budget', (id) => {
+      const rig = createBossModel(id);
+      let triangles = 0;
+      let drawCalls = 0;
+      rig.root.traverse((child) => {
+        if (!(child instanceof THREE.Mesh) || child === rig.wardMesh) return;
+        const geo = child.geometry as THREE.BufferGeometry;
+        triangles += (geo.index ? geo.index.count : geo.attributes.position.count) / 3;
+        drawCalls++;
+      });
+      expect(triangles).toBeLessThan(24000);
+      expect(drawCalls).toBeLessThanOrEqual(70);
+    });
+
+    it('opens the dragon jaw and raises the casters\' arms during the telegraph wind-up', () => {
+      const dragon = createBossModel('dragon');
+      const witch = createBossModel('witch');
+      const sample = (rig: ReturnType<typeof createBossModel>, phase: (typeof PHASES)[number]) => {
+        for (let i = 0; i < 60; i++) rig.animate(1 / 30, { time: i / 30, phase, theta: 0, slope: 1 });
+        rig.root.updateMatrixWorld(true);
+        const box = new THREE.Box3().setFromObject(rig.bodyGroup);
+        return box.max.y;
+      };
+      const witchIdleTop = sample(witch, 'IDLE_GUARD');
+      const witchTelegraphTop = sample(witch, 'TELEGRAPH');
+      expect(witchTelegraphTop).toBeGreaterThan(witchIdleTop);
+
+      const jawAngle = (phase: (typeof PHASES)[number]) => {
+        for (let i = 0; i < 60; i++) dragon.animate(1 / 30, { time: i / 30, phase, theta: 0, slope: 1 });
+        const head = dragon.neckSegments![2].children.find((c) => c.children.length > 0 && c.type === 'Group' && c.position.z > 0.5)!;
+        const jaw = head.children.filter((c) => c.type === 'Group').find((c) => c.position.y < -0.1)!;
+        return jaw.rotation.x;
+      };
+      expect(jawAngle('TELEGRAPH')).toBeGreaterThan(jawAngle('IDLE_GUARD') + 0.3);
+    });
+  });
+
   it('creates Solstice Haven village with both interactive NPCs and autonomous ambient wandering townsfolk', () => {
     const village = createSolsticeHavenVillage();
 

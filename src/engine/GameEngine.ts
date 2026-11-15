@@ -769,6 +769,8 @@ export class GameEngine {
       p.position.set(Math.cos(a) * 3.4, 2.5 + Math.sin(a * 2) * 0.5, Math.sin(a) * 3.4);
       p.rotation.y = a;
     });
+    // Intro roar: play the boss's wind-up pose (raised arms, open jaw, flaring flames).
+    bossRig.animate(dt, { time: this.cutsceneTime, phase: 'TELEGRAPH', theta: boss.theta, slope: 1.5 });
 
     // Shadow light on boss
     this.keyLight.position.set(boss.homeX + 28, boss.homeY + 48, boss.homeZ - 36);
@@ -1054,6 +1056,7 @@ export class GameEngine {
           rib.rotation.x = 0.18 + Math.sin(this.totalTime * 3.0 + idx) * 0.14;
         });
       }
+      bossRig.animate(dt, { time: this.totalTime, phase: boss.phase, theta: boss.theta, slope: slopeMag });
 
       if (this.activeBossId === id) {
         const profile = PRESET_PROFILES[this.settings.preset];
