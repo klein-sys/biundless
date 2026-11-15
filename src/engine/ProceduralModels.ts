@@ -1904,96 +1904,224 @@ export function createAstrolabeGazebo(): { group: THREE.Group; update: (dt: numb
   const group = new THREE.Group();
 
   const stoneMat = new THREE.MeshStandardMaterial({
-    color: 0xd1cbbe,
-    roughness: 0.75,
+    color: 0xe2ded4, // Polished classical limestone
+    roughness: 0.72,
+  });
+  const darkStoneMat = new THREE.MeshStandardMaterial({
+    color: 0x94a3b8,
+    roughness: 0.8,
+  });
+  const goldTrimMat = new THREE.MeshStandardMaterial({
+    color: 0xf59e0b,
+    metalness: 0.82,
+    roughness: 0.28,
+  });
+  const copperPatinaMat = new THREE.MeshStandardMaterial({
+    color: 0x2d6a65, // Weathered celestial verdigris copper
+    roughness: 0.55,
+    metalness: 0.35,
+  });
+  const lapisBlueMat = new THREE.MeshStandardMaterial({
+    color: 0x1e293b,
+    roughness: 0.65,
+    metalness: 0.2,
   });
 
-  // Two-tiered Circular Plinth
-  const plinthLower = new THREE.Mesh(new THREE.CylinderGeometry(4.4, 4.6, 0.35, 16), stoneMat);
+  // 1. Two-Tiered Circular Marble Plinth
+  const plinthLower = new THREE.Mesh(new THREE.CylinderGeometry(4.5, 4.7, 0.35, 24), stoneMat);
   plinthLower.position.y = 0.175;
   plinthLower.receiveShadow = true;
   group.add(plinthLower);
 
-  const plinthUpper = new THREE.Mesh(new THREE.CylinderGeometry(3.8, 4.0, 0.3, 16), stoneMat);
+  const plinthUpper = new THREE.Mesh(new THREE.CylinderGeometry(3.9, 4.1, 0.3, 24), stoneMat);
   plinthUpper.position.y = 0.48;
   plinthUpper.receiveShadow = true;
   group.add(plinthUpper);
 
-  // 8 Classical Pillars
-  const pillarGeo = new THREE.CylinderGeometry(0.18, 0.22, 3.6, 8);
+  // Concentric Brass Floor Inlay on Plinth
+  const floorRing1 = new THREE.Mesh(new THREE.TorusGeometry(3.6, 0.03, 6, 32), goldTrimMat);
+  floorRing1.position.y = 0.635;
+  floorRing1.rotation.x = Math.PI * 0.5;
+  group.add(floorRing1);
+
+  const floorRing2 = new THREE.Mesh(new THREE.TorusGeometry(2.2, 0.025, 6, 28), goldTrimMat);
+  floorRing2.position.y = 0.635;
+  floorRing2.rotation.x = Math.PI * 0.5;
+  group.add(floorRing2);
+
+  // 2. Eight Fluted Classical Columns with Molded Bases & Corinthian Gold Capitals
   const pillarRadius = 3.2;
   for (let i = 0; i < 8; i++) {
     const angle = (i / 8) * Math.PI * 2;
-    const pillar = new THREE.Mesh(pillarGeo, stoneMat);
-    pillar.position.set(Math.cos(angle) * pillarRadius, 2.3, Math.sin(angle) * pillarRadius);
-    pillar.castShadow = true;
-    group.add(pillar);
+    const px = Math.cos(angle) * pillarRadius;
+    const pz = Math.sin(angle) * pillarRadius;
+
+    // Pedestal Base
+    const colBase = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.34, 0.25, 12), darkStoneMat);
+    colBase.position.set(px, 0.75, pz);
+    colBase.castShadow = true;
+    group.add(colBase);
+
+    // 12-sided Fluted Shaft
+    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, 3.3, 12), stoneMat);
+    shaft.position.set(px, 2.5, pz);
+    shaft.castShadow = true;
+    group.add(shaft);
+
+    // Corinthian Gold Capital
+    const capital = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.22, 0.26, 12), goldTrimMat);
+    capital.position.set(px, 4.22, pz);
+    capital.castShadow = true;
+    group.add(capital);
   }
 
-  // Architrave Ring
-  const architrave = new THREE.Mesh(
-    new THREE.TorusGeometry(3.2, 0.22, 8, 24),
+  // 3. Double-Tiered Entablature Ring (Rests flush on top of column capitals)
+  const entablatureGroup = new THREE.Group();
+  entablatureGroup.name = 'gazebo_entablature';
+  entablatureGroup.position.y = 4.38;
+  group.add(entablatureGroup);
+
+  const architraveBeam = new THREE.Mesh(
+    new THREE.CylinderGeometry(3.42, 3.32, 0.22, 24),
     stoneMat
   );
-  architrave.position.y = 4.15;
-  architrave.rotation.x = Math.PI * 0.5;
-  group.add(architrave);
+  architraveBeam.castShadow = true;
+  entablatureGroup.add(architraveBeam);
 
-  // Domed Patina Canopy
-  const domeMat = new THREE.MeshStandardMaterial({
-    color: 0x367a74, // Weathered copper patina
-    roughness: 0.65,
-    metalness: 0.3,
-  });
-  const dome = new THREE.Mesh(
-    new THREE.SphereGeometry(3.4, 16, 8, 0, Math.PI * 2, 0, Math.PI * 0.36),
-    domeMat
+  const corniceRing = new THREE.Mesh(
+    new THREE.CylinderGeometry(3.55, 3.42, 0.16, 24),
+    darkStoneMat
   );
-  dome.position.y = 4.1;
-  dome.castShadow = true;
-  group.add(dome);
+  corniceRing.position.y = 0.18;
+  corniceRing.castShadow = true;
+  entablatureGroup.add(corniceRing);
 
-  // Spire on top of dome
-  const domeSpire = new THREE.Mesh(
-    new THREE.ConeGeometry(0.15, 1.2, 8),
-    new THREE.MeshStandardMaterial({ color: 0xf59e0b, metalness: 0.8, roughness: 0.3 })
+  const goldDentilTrim = new THREE.Mesh(
+    new THREE.TorusGeometry(3.52, 0.035, 6, 32),
+    goldTrimMat
   );
-  domeSpire.position.y = 5.8;
-  group.add(domeSpire);
+  goldDentilTrim.position.y = 0.26;
+  goldDentilTrim.rotation.x = Math.PI * 0.5;
+  entablatureGroup.add(goldDentilTrim);
 
-  // Center Astrolabe Orrery (Floating rotating concentric rings)
+  // 4. Solid Ribbed Patina & Lapis Celestial Dome (Seats flush on top of cornice)
+  const domeGroup = new THREE.Group();
+  domeGroup.name = 'gazebo_dome';
+  // Cornice top is at y = 4.38 + 0.18 + 0.08 = 4.64. Dome starts directly at y = 4.64.
+  domeGroup.position.y = 4.64;
+  group.add(domeGroup);
+
+  // Hemisphere Dome Shell (Scaled to height = 2.1m)
+  const domeShellGeo = new THREE.SphereGeometry(3.45, 24, 14, 0, Math.PI * 2, 0, Math.PI * 0.5);
+  const domeMesh = new THREE.Mesh(domeShellGeo, copperPatinaMat);
+  domeMesh.scale.set(1.0, 0.62, 1.0);
+  domeMesh.castShadow = true;
+  domeMesh.receiveShadow = true;
+  domeGroup.add(domeMesh);
+
+  // Inner Ceiling Shell with Celestial Blue Tone
+  const domeInner = new THREE.Mesh(
+    new THREE.SphereGeometry(3.4, 20, 10, 0, Math.PI * 2, 0, Math.PI * 0.5),
+    lapisBlueMat
+  );
+  domeInner.scale.set(1.0, 0.61, 1.0);
+  domeInner.material.side = THREE.BackSide;
+  domeGroup.add(domeInner);
+
+  // Eight Radial Gold Structural Ribs Arcing to the Summit
+  const ribHeight = 3.45 * 0.62; // 2.14m apex
+  for (let r = 0; r < 8; r++) {
+    const ribAngle = (r / 8) * Math.PI * 2;
+    const rib = new THREE.Mesh(
+      new THREE.TorusGeometry(3.45, 0.032, 6, 18, Math.PI * 0.5),
+      goldTrimMat
+    );
+    rib.scale.set(1.0, 0.62, 1.0);
+    rib.rotation.y = ribAngle;
+    rib.castShadow = true;
+    domeGroup.add(rib);
+  }
+
+  // Summit Gold Oculus Collar
+  const oculusCollar = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.55, 0.65, 0.18, 16),
+    goldTrimMat
+  );
+  oculusCollar.position.y = ribHeight + 0.09;
+  domeGroup.add(oculusCollar);
+
+  // 5. Celestial Astrolabe Weather Finial Tower
+  const finialBase = new THREE.Mesh(
+    new THREE.ConeGeometry(0.35, 0.65, 10),
+    goldTrimMat
+  );
+  finialBase.position.y = ribHeight + 0.45;
+  domeGroup.add(finialBase);
+
+  const finialRing1 = new THREE.Mesh(new THREE.TorusGeometry(0.38, 0.025, 6, 16), goldTrimMat);
+  finialRing1.position.y = ribHeight + 0.82;
+  domeGroup.add(finialRing1);
+
+  const finialRing2 = new THREE.Mesh(new THREE.TorusGeometry(0.26, 0.022, 6, 14), goldTrimMat);
+  finialRing2.position.y = ribHeight + 0.82;
+  finialRing2.rotation.x = Math.PI * 0.5;
+  domeGroup.add(finialRing2);
+
+  const finialSpire = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.02, 0.06, 0.85, 8),
+    goldTrimMat
+  );
+  finialSpire.position.y = ribHeight + 1.25;
+  domeGroup.add(finialSpire);
+
+  const finialStar = new THREE.Mesh(
+    new THREE.OctahedronGeometry(0.12, 0),
+    new THREE.MeshBasicMaterial({ color: 0x60a5fa })
+  );
+  finialStar.position.y = ribHeight + 1.7;
+  domeGroup.add(finialStar);
+
+  // 6. Central Suspended Astrolabe Orrery (Concentric gimbaled rings & stellar core)
   const orreryGroup = new THREE.Group();
-  orreryGroup.position.set(0, 2.8, 0);
+  orreryGroup.name = 'gazebo_orrery';
+  orreryGroup.position.set(0, 2.75, 0);
   group.add(orreryGroup);
 
-  const brassMat = new THREE.MeshStandardMaterial({
-    color: 0xf59e0b,
-    metalness: 0.85,
-    roughness: 0.3,
-  });
-  const ring1 = new THREE.Mesh(new THREE.TorusGeometry(1.0, 0.04, 6, 24), brassMat);
+  const ring1 = new THREE.Mesh(new THREE.TorusGeometry(1.05, 0.04, 6, 28), goldTrimMat);
   orreryGroup.add(ring1);
 
-  const ring2 = new THREE.Mesh(new THREE.TorusGeometry(0.72, 0.035, 6, 20), brassMat);
+  const ring2 = new THREE.Mesh(new THREE.TorusGeometry(0.78, 0.035, 6, 24), goldTrimMat);
   ring2.rotation.x = Math.PI * 0.35;
   orreryGroup.add(ring2);
 
-  const ring3 = new THREE.Mesh(new THREE.TorusGeometry(0.48, 0.03, 6, 16), brassMat);
+  const ring3 = new THREE.Mesh(new THREE.TorusGeometry(0.52, 0.03, 6, 20), goldTrimMat);
   ring3.rotation.y = Math.PI * 0.45;
   orreryGroup.add(ring3);
 
-  // Central Celestial Core
-  const coreMat = new THREE.MeshBasicMaterial({ color: 0x60a5fa });
-  const core = new THREE.Mesh(new THREE.OctahedronGeometry(0.2, 0), coreMat);
+  // Central Oscillating Celestial Stellar Core
+  const coreMat = new THREE.MeshStandardMaterial({
+    color: 0x38bdf8,
+    emissive: 0x0284c7,
+    emissiveIntensity: 1.2,
+    roughness: 0.1,
+    metalness: 0.2,
+  });
+  const core = new THREE.Mesh(new THREE.IcosahedronGeometry(0.24, 0), coreMat);
   orreryGroup.add(core);
 
+  let orreryTime = 0;
   return {
     group,
     update: (dt: number) => {
+      orreryTime += dt;
       ring1.rotation.y += dt * 0.45;
       ring2.rotation.x += dt * 0.6;
       ring3.rotation.z += dt * 0.75;
-      core.rotation.y += dt * 1.2;
+      core.rotation.y += dt * 1.4;
+      core.rotation.x += dt * 0.8;
+      core.position.y = Math.sin(orreryTime * 2.0) * 0.05;
+      finialRing1.rotation.y += dt * 0.25;
+      finialRing2.rotation.z += dt * 0.35;
     },
   };
 }
@@ -2001,90 +2129,272 @@ export function createAstrolabeGazebo(): { group: THREE.Group; update: (dt: numb
 export function createArchmageAurelius(): { group: THREE.Group; update: (dt: number) => void } {
   const group = new THREE.Group();
 
-  // Indigo and Gold Robe
+  // --- Stylized Elder Sage Materials ---
   const robeMat = new THREE.MeshStandardMaterial({
-    color: 0x1e1b4b,
+    color: 0x1e1b4b, // Midnight indigo
+    roughness: 0.65,
+  });
+  const innerTunicMat = new THREE.MeshStandardMaterial({
+    color: 0x1e3a8a, // Deep sapphire azure
     roughness: 0.7,
+  });
+  const mantleMat = new THREE.MeshStandardMaterial({
+    color: 0x0f172a, // Obsidian mantle
+    roughness: 0.6,
   });
   const goldTrimMat = new THREE.MeshStandardMaterial({
     color: 0xf59e0b,
-    metalness: 0.7,
-    roughness: 0.3,
+    metalness: 0.85,
+    roughness: 0.25,
+  });
+  const skinMat = new THREE.MeshStandardMaterial({
+    color: 0xf5d0b5,
+    roughness: 0.75,
+  });
+  const hairMat = new THREE.MeshStandardMaterial({
+    color: 0xf1f5f9, // Luminous silver hair
+    roughness: 0.85,
+  });
+  const staffWoodMat = new THREE.MeshStandardMaterial({
+    color: 0x3e2723, // Polished dark starwood
+    roughness: 0.75,
+  });
+  const crystalMat = new THREE.MeshStandardMaterial({
+    color: 0x38bdf8,
+    emissive: 0x0ea5e9,
+    emissiveIntensity: 1.4,
+    roughness: 0.15,
   });
 
-  const robe = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.6, 1.6, 10), robeMat);
-  robe.position.y = 0.8;
-  robe.castShadow = true;
-  group.add(robe);
+  // 1. Pleated Midnight-Indigo Astral Robes
+  const robeGroup = new THREE.Group();
+  robeGroup.name = 'aurelius_robe';
+  group.add(robeGroup);
 
-  const robeTrim = new THREE.Mesh(new THREE.TorusGeometry(0.61, 0.04, 6, 16), goldTrimMat);
-  robeTrim.position.y = 0.04;
-  robeTrim.rotation.x = Math.PI * 0.5;
-  group.add(robeTrim);
+  // Lower Flared Pleated Robe Skirt
+  const robeSkirt = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.68, 1.35, 12), robeMat);
+  robeSkirt.position.y = 0.68;
+  robeSkirt.castShadow = true;
+  robeGroup.add(robeSkirt);
 
-  // Mantle / Shoulder Capelet
-  const mantle = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.45, 0.35, 10), goldTrimMat);
-  mantle.position.y = 1.5;
-  group.add(mantle);
+  // Embroidered Celestial Gold Hemline
+  const robeHemRing = new THREE.Mesh(new THREE.TorusGeometry(0.69, 0.04, 6, 20), goldTrimMat);
+  robeHemRing.position.y = 0.05;
+  robeHemRing.rotation.x = Math.PI * 0.5;
+  robeGroup.add(robeHemRing);
 
-  // Head
-  const skinMat = new THREE.MeshStandardMaterial({ color: 0xf5d0b5, roughness: 0.8 });
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), skinMat);
-  head.position.y = 1.82;
-  group.add(head);
+  // Upper Torso & Sapphire Inner Tunic
+  const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.36, 0.65, 10), innerTunicMat);
+  torso.position.y = 1.35;
+  torso.castShadow = true;
+  robeGroup.add(torso);
 
-  // Braided White Beard
-  const beardMat = new THREE.MeshStandardMaterial({ color: 0xf1f5f9, roughness: 0.85 });
-  const beard = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.65, 8), beardMat);
-  beard.position.set(0, 1.5, 0.15);
-  beard.rotation.x = -Math.PI * 0.12;
-  group.add(beard);
+  // Gold Arcane Sash & Frogs
+  const sash = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.37, 0.1, 10), goldTrimMat);
+  sash.position.y = 1.05;
+  robeGroup.add(sash);
 
-  // Wizard Hat
-  const hatBrim = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, 0.04, 16), robeMat);
-  hatBrim.position.y = 1.98;
-  group.add(hatBrim);
+  // 2. Layered Shoulder Cowl & Embroidered Mantle (Replaces the crude barrel cylinder)
+  const cowl = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.48, 0.3, 12), mantleMat);
+  cowl.position.y = 1.52;
+  cowl.castShadow = true;
+  robeGroup.add(cowl);
 
-  const hatBand = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.34, 0.1, 12), goldTrimMat);
-  hatBand.position.y = 2.04;
-  group.add(hatBand);
+  const cowlTrim = new THREE.Mesh(new THREE.TorusGeometry(0.48, 0.03, 6, 18), goldTrimMat);
+  cowlTrim.position.y = 1.38;
+  cowlTrim.rotation.x = Math.PI * 0.5;
+  robeGroup.add(cowlTrim);
 
-  const hatCone = new THREE.Mesh(new THREE.ConeGeometry(0.3, 0.9, 10), robeMat);
-  hatCone.position.set(0, 2.45, -0.06);
-  hatCone.rotation.x = -Math.PI * 0.08;
-  group.add(hatCone);
+  // Celestial Star Brooch at Center Neck
+  const neckBrooch = new THREE.Mesh(new THREE.OctahedronGeometry(0.08, 0), goldTrimMat);
+  neckBrooch.position.set(0, 1.54, 0.44);
+  robeGroup.add(neckBrooch);
 
-  // Astrolabe Staff in right hand
-  const staffMat = new THREE.MeshStandardMaterial({ color: 0x451a03, roughness: 0.8 });
-  const staff = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 2.3, 6), staffMat);
-  staff.position.set(0.55, 1.15, 0.2);
-  group.add(staff);
+  // 3. Head & Dignified Elder Facial Features
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.16, 0.18, 8), skinMat);
+  neck.position.y = 1.68;
+  robeGroup.add(neck);
 
-  // Staff Head Crystal & Astrolabe Ring
-  const crystalMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
-  const staffCrystal = new THREE.Mesh(new THREE.DodecahedronGeometry(0.14, 0), crystalMat);
-  staffCrystal.position.set(0.55, 2.3, 0.2);
-  group.add(staffCrystal);
+  const headGroup = new THREE.Group();
+  headGroup.position.set(0, 1.84, 0.02);
+  robeGroup.add(headGroup);
 
-  const staffRing = new THREE.Mesh(
-    new THREE.TorusGeometry(0.24, 0.025, 6, 16),
-    goldTrimMat
+  const headMesh = new THREE.Mesh(new THREE.SphereGeometry(0.2, 10, 8), skinMat);
+  headMesh.castShadow = true;
+  headGroup.add(headMesh);
+
+  // Flowing Silver Wizard Hair Locks
+  const hairCrown = new THREE.Mesh(
+    new THREE.SphereGeometry(0.22, 8, 8, 0, Math.PI * 2, 0, Math.PI * 0.6),
+    hairMat
   );
-  staffRing.position.set(0.55, 2.3, 0.2);
-  group.add(staffRing);
+  hairCrown.position.set(0, 0.04, -0.02);
+  headGroup.add(hairCrown);
 
-  let time = 0;
+  const hairDrape = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.24, 0.45, 8), hairMat);
+  hairDrape.position.set(0, -0.15, -0.12);
+  headGroup.add(hairDrape);
+
+  // 4. Long Braided Wizard Beard with Gold Arcane Rune Rings
+  const beardGroup = new THREE.Group();
+  beardGroup.name = 'aurelius_beard';
+  beardGroup.position.set(0, -0.1, 0.14);
+  headGroup.add(beardGroup);
+
+  const beardMain = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.72, 8), hairMat);
+  beardMain.position.set(0, -0.22, 0.04);
+  beardMain.rotation.x = -Math.PI * 0.12;
+  beardGroup.add(beardMain);
+
+  // Twin Braids
+  const braidLeft = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.025, 0.45, 6), hairMat);
+  braidLeft.position.set(-0.08, -0.42, 0.06);
+  beardGroup.add(braidLeft);
+
+  const braidRight = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.025, 0.45, 6), hairMat);
+  braidRight.position.set(0.08, -0.42, 0.06);
+  beardGroup.add(braidRight);
+
+  // Gold Arcane Rings on Braids
+  const ringL1 = new THREE.Mesh(new THREE.TorusGeometry(0.038, 0.012, 6, 8), goldTrimMat);
+  ringL1.position.set(-0.08, -0.32, 0.06);
+  ringL1.rotation.x = Math.PI * 0.5;
+  beardGroup.add(ringL1);
+
+  const ringR1 = new THREE.Mesh(new THREE.TorusGeometry(0.038, 0.012, 6, 8), goldTrimMat);
+  ringR1.position.set(0.08, -0.32, 0.06);
+  ringR1.rotation.x = Math.PI * 0.5;
+  beardGroup.add(ringR1);
+
+  // 5. Ornate Pointed Wizard Hat with Curved Peak & Crescent Brooch
+  const hatGroup = new THREE.Group();
+  hatGroup.name = 'aurelius_hat';
+  hatGroup.position.set(0, 0.16, 0);
+  headGroup.add(hatGroup);
+
+  // Undulating Broad Hat Brim
+  const hatBrim = new THREE.Mesh(new THREE.CylinderGeometry(0.58, 0.58, 0.04, 18), robeMat);
+  hatBrim.castShadow = true;
+  hatGroup.add(hatBrim);
+
+  const hatBrimTrim = new THREE.Mesh(new THREE.TorusGeometry(0.58, 0.025, 6, 20), goldTrimMat);
+  hatBrimTrim.rotation.x = Math.PI * 0.5;
+  hatGroup.add(hatBrimTrim);
+
+  // Hat Band & Crescent Moon Emblem
+  const hatBand = new THREE.Mesh(new THREE.CylinderGeometry(0.31, 0.33, 0.12, 14), goldTrimMat);
+  hatBand.position.y = 0.07;
+  hatGroup.add(hatBand);
+
+  const crescentBrooch = new THREE.Mesh(new THREE.TorusGeometry(0.08, 0.02, 6, 12, Math.PI * 1.3), goldTrimMat);
+  crescentBrooch.position.set(0, 0.08, 0.33);
+  crescentBrooch.rotation.z = Math.PI * 0.25;
+  hatGroup.add(crescentBrooch);
+
+  // Tapered Hat Cone with Curved Backward Peak
+  const hatConeLower = new THREE.Mesh(new THREE.ConeGeometry(0.3, 0.55, 10), robeMat);
+  hatConeLower.position.set(0, 0.34, -0.04);
+  hatConeLower.rotation.x = -Math.PI * 0.12;
+  hatConeLower.castShadow = true;
+  hatGroup.add(hatConeLower);
+
+  const hatConeTip = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.45, 8), robeMat);
+  hatConeTip.position.set(0, 0.72, -0.16);
+  hatConeTip.rotation.x = -Math.PI * 0.28;
+  hatConeTip.castShadow = true;
+  hatGroup.add(hatConeTip);
+
+  // 6. Right Arm Holding Starwood Astrolabe Staff
+  const rightArmGroup = new THREE.Group();
+  rightArmGroup.position.set(0.38, 1.45, 0);
+  robeGroup.add(rightArmGroup);
+
+  const rightSleeve = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.22, 0.65, 8), robeMat);
+  rightSleeve.position.set(0.06, -0.25, 0.1);
+  rightSleeve.rotation.set(0.3, 0, -0.2);
+  rightArmGroup.add(rightSleeve);
+
+  const staffGroup = new THREE.Group();
+  staffGroup.name = 'aurelius_staff';
+  staffGroup.position.set(0.55, 0, 0.28);
+  group.add(staffGroup);
+
+  // Carved Starwood Shaft
+  const staffShaft = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.038, 2.35, 8), staffWoodMat);
+  staffShaft.position.y = 1.175;
+  staffShaft.castShadow = true;
+  staffGroup.add(staffShaft);
+
+  // Helical Gold Vine Wrapping
+  for (let v = 0; v < 6; v++) {
+    const vine = new THREE.Mesh(new THREE.TorusGeometry(0.042, 0.012, 4, 12, Math.PI * 1.5), goldTrimMat);
+    vine.position.y = 0.4 + v * 0.32;
+    vine.rotation.x = Math.PI * 0.4;
+    vine.rotation.y = v * 0.8;
+    staffGroup.add(vine);
+  }
+
+  // Brass Armillary Astrolabe Cage Head
+  const staffArmillary = new THREE.Group();
+  staffArmillary.position.y = 2.42;
+  staffGroup.add(staffArmillary);
+
+  const staffRing1 = new THREE.Mesh(new THREE.TorusGeometry(0.24, 0.022, 6, 16), goldTrimMat);
+  staffArmillary.add(staffRing1);
+
+  const staffRing2 = new THREE.Mesh(new THREE.TorusGeometry(0.18, 0.018, 6, 14), goldTrimMat);
+  staffRing2.rotation.x = Math.PI * 0.45;
+  staffArmillary.add(staffRing2);
+
+  // Oscillating Cyan Focus Crystal
+  const staffCrystal = new THREE.Mesh(new THREE.DodecahedronGeometry(0.12, 0), crystalMat);
+  staffArmillary.add(staffCrystal);
+
+  // 7. Left Arm in Arcane Channeling Gesture
+  const leftArmGroup = new THREE.Group();
+  leftArmGroup.position.set(-0.38, 1.45, 0);
+  robeGroup.add(leftArmGroup);
+
+  const leftSleeve = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.22, 0.65, 8), robeMat);
+  leftSleeve.position.set(-0.06, -0.22, 0.12);
+  leftSleeve.rotation.set(0.5, 0, 0.35);
+  leftArmGroup.add(leftSleeve);
+
+  const leftHand = new THREE.Mesh(new THREE.SphereGeometry(0.07, 6, 6), skinMat);
+  leftHand.position.set(-0.16, -0.48, 0.32);
+  leftArmGroup.add(leftHand);
+
+  // Floating channeling spark mote in left palm
+  const leftPalmSpark = new THREE.Mesh(
+    new THREE.OctahedronGeometry(0.04, 0),
+    new THREE.MeshBasicMaterial({ color: 0x60a5fa })
+  );
+  leftPalmSpark.position.set(-0.16, -0.42, 0.36);
+  leftArmGroup.add(leftPalmSpark);
+
+  let sageTime = 0;
   return {
     group,
     update: (dt: number) => {
-      time += dt;
+      sageTime += dt;
       // Gentle breathing idle
-      robe.scale.y = 1.0 + Math.sin(time * 2.0) * 0.02;
-      staffCrystal.rotation.y += dt * 1.5;
-      staffRing.rotation.z += dt * 2.0;
+      robeGroup.position.y = Math.sin(sageTime * 1.8) * 0.012;
+      headGroup.rotation.y = Math.sin(sageTime * 0.8) * 0.05;
+
+      // Staff crystal spin and harmonic float
+      staffRing1.rotation.y += dt * 1.6;
+      staffRing2.rotation.z += dt * 2.2;
+      staffCrystal.rotation.y += dt * 2.0;
+      staffCrystal.rotation.x += dt * 1.2;
+      staffArmillary.position.y = 2.42 + Math.sin(sageTime * 2.5) * 0.04;
+
+      // Left palm arcane energy pulse
+      leftPalmSpark.scale.setScalar(0.8 + Math.sin(sageTime * 4.0) * 0.3);
+      leftPalmSpark.rotation.y += dt * 3.0;
     },
   };
 }
+
 
 export function createTheronBlacksmith(): { group: THREE.Group; update: (dt: number) => void } {
   const group = new THREE.Group();

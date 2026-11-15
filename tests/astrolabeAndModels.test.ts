@@ -7,6 +7,8 @@ import {
   createPlayerModel,
   createSolsticeHavenVillage,
   createTheronBlacksmith,
+  createAstrolabeGazebo,
+  createArchmageAurelius,
 } from '../src/engine/ProceduralModels';
 
 describe('Astrolabe Grimoire SVG Plotter', () => {
@@ -172,4 +174,55 @@ describe('Stylized 3D Procedural Models & Solstice Haven Living Town', () => {
       smith.update(1.0);
     }).not.toThrow();
   });
+
+  it('creates an integrated Astrolabe Gazebo with flush dome, entablature, and central orrery', () => {
+    const gazebo = createAstrolabeGazebo();
+    expect(gazebo.group).toBeInstanceOf(THREE.Group);
+
+    let foundDome = false;
+    let foundEntablature = false;
+    let foundOrrery = false;
+
+    gazebo.group.traverse((child) => {
+      if (child.name === 'gazebo_dome') foundDome = true;
+      if (child.name === 'gazebo_entablature') foundEntablature = true;
+      if (child.name === 'gazebo_orrery') foundOrrery = true;
+    });
+
+    expect(foundDome).toBe(true);
+    expect(foundEntablature).toBe(true);
+    expect(foundOrrery).toBe(true);
+  });
+
+  it('creates an articulated Archmage Aurelius rig with pleated robes, braided beard, and armillary staff', () => {
+    const aurelius = createArchmageAurelius();
+    expect(aurelius.group).toBeInstanceOf(THREE.Group);
+
+    let foundBeard = false;
+    let foundStaff = false;
+    let foundHat = false;
+
+    aurelius.group.traverse((child) => {
+      if (child.name === 'aurelius_beard') foundBeard = true;
+      if (child.name === 'aurelius_staff') foundStaff = true;
+      if (child.name === 'aurelius_hat') foundHat = true;
+    });
+
+    expect(foundBeard).toBe(true);
+    expect(foundStaff).toBe(true);
+    expect(foundHat).toBe(true);
+  });
+
+  it('updates gazebo orrery and aurelius staff animations without throwing', () => {
+    const gazebo = createAstrolabeGazebo();
+    const aurelius = createArchmageAurelius();
+
+    expect(() => {
+      gazebo.update(0.016);
+      gazebo.update(0.5);
+      aurelius.update(0.016);
+      aurelius.update(0.5);
+    }).not.toThrow();
+  });
 });
+
