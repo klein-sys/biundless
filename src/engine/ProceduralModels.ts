@@ -1650,109 +1650,437 @@ export function createVillageCottage(variant: number = 0): THREE.Group {
 
 export function createTownFountain(): { group: THREE.Group; update: (dt: number) => void } {
   const group = new THREE.Group();
+  group.name = 'fountain_root';
 
+  // --- Palette & Materials ---
   const stoneMat = new THREE.MeshStandardMaterial({
-    color: 0xc4beb3,
-    roughness: 0.8,
+    color: 0xdcd6cb,
+    roughness: 0.72,
+    metalness: 0.04,
   });
-
-  // Main Tier Basin Outer
-  const outerBasin = new THREE.Mesh(new THREE.CylinderGeometry(2.9, 3.1, 0.65, 16), stoneMat);
-  outerBasin.position.y = 0.32;
-  outerBasin.castShadow = true;
-  outerBasin.receiveShadow = true;
-  group.add(outerBasin);
-
-  // Lower Basin Water Surface
+  const marbleMat = new THREE.MeshStandardMaterial({
+    color: 0xf4f0e8,
+    roughness: 0.52,
+    metalness: 0.05,
+  });
+  const bronzeMat = new THREE.MeshStandardMaterial({
+    color: 0x8a6d3b,
+    metalness: 0.78,
+    roughness: 0.35,
+  });
+  const goldTrimMat = new THREE.MeshStandardMaterial({
+    color: 0xd4af37,
+    metalness: 0.85,
+    roughness: 0.25,
+  });
   const waterMat = new THREE.MeshStandardMaterial({
     color: 0x38bdf8,
-    roughness: 0.12,
-    metalness: 0.25,
+    roughness: 0.08,
+    metalness: 0.2,
     transparent: true,
     opacity: 0.82,
   });
-  const lowerWater = new THREE.Mesh(new THREE.CylinderGeometry(2.6, 2.6, 0.08, 16), waterMat);
-  lowerWater.position.y = 0.55;
-  group.add(lowerWater);
-
-  // Center Pedestal Column
-  const pedestal = new THREE.Mesh(new THREE.CylinderGeometry(0.65, 0.85, 1.8, 12), stoneMat);
-  pedestal.position.y = 1.2;
-  pedestal.castShadow = true;
-  group.add(pedestal);
-
-  // Upper Tier Small Basin
-  const upperBasin = new THREE.Mesh(new THREE.CylinderGeometry(1.3, 1.45, 0.4, 12), stoneMat);
-  upperBasin.position.y = 2.0;
-  upperBasin.castShadow = true;
-  group.add(upperBasin);
-
-  // Upper Water
-  const upperWater = new THREE.Mesh(new THREE.CylinderGeometry(1.15, 1.15, 0.06, 12), waterMat);
-  upperWater.position.y = 2.2;
-  group.add(upperWater);
-
-  // Center Spire & Spray Jet
-  const spire = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.8, 8), stoneMat);
-  spire.position.y = 2.5;
-  group.add(spire);
-
-  const jetMat = new THREE.MeshBasicMaterial({
-    color: 0xe0f2fe,
+  const cascadeMat = new THREE.MeshBasicMaterial({
+    color: 0xcae9ff,
     transparent: true,
-    opacity: 0.75,
+    opacity: 0.78,
   });
-  const sprayJet = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.9, 8), jetMat);
-  sprayJet.position.y = 3.1;
-  group.add(sprayJet);
+  const foamMat = new THREE.MeshBasicMaterial({
+    color: 0xffffff,
+    transparent: true,
+    opacity: 0.7,
+  });
 
+  // 1. Lower Basin & Stepped Octagonal Plinth (Sits flush at y = 0)
+  const lowerBasinGroup = new THREE.Group();
+  lowerBasinGroup.name = 'fountain_basin_lower';
+
+  // Stepped octagonal foundation pad
+  const plinthStep = new THREE.Mesh(new THREE.CylinderGeometry(3.25, 3.45, 0.22, 8), stoneMat);
+  plinthStep.position.y = 0.11;
+  plinthStep.receiveShadow = true;
+  lowerBasinGroup.add(plinthStep);
+
+  // Outer molded stone coping with beveled lip
+  const outerBasin = new THREE.Mesh(new THREE.CylinderGeometry(2.9, 3.2, 0.65, 20), stoneMat);
+  outerBasin.position.y = 0.44;
+  outerBasin.castShadow = true;
+  outerBasin.receiveShadow = true;
+  lowerBasinGroup.add(outerBasin);
+
+  // Basin coping rim molding
+  const basinRim = new THREE.Mesh(new THREE.TorusGeometry(2.95, 0.08, 8, 24), stoneMat);
+  basinRim.position.y = 0.74;
+  basinRim.rotation.x = Math.PI * 0.5;
+  lowerBasinGroup.add(basinRim);
+
+  // 4 Carved Gargoyle / Lion Relief Spouts pointing inward at cardinal angles
+  const spoutAngles = [0, Math.PI * 0.5, Math.PI, Math.PI * 1.5];
+  spoutAngles.forEach((ang) => {
+    const spoutGroup = new THREE.Group();
+    spoutGroup.rotation.y = ang;
+
+    // Relief carved lion/gargoyle head mount
+    const headBlock = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.24, 0.32), stoneMat);
+    headBlock.position.set(0, 0.68, 2.82);
+    spoutGroup.add(headBlock);
+
+    // Cast bronze inward spout pipe
+    const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.055, 0.26, 8), bronzeMat);
+    pipe.position.set(0, 0.64, 2.68);
+    pipe.rotation.x = Math.PI * 0.35;
+    spoutGroup.add(pipe);
+
+    lowerBasinGroup.add(spoutGroup);
+  });
+
+  group.add(lowerBasinGroup);
+
+  // 2. Lower Basin Water Surface & Animated Splashing Foam
+  const lowerWaterGroup = new THREE.Group();
+  lowerWaterGroup.name = 'fountain_water';
+
+  const lowerWater = new THREE.Mesh(new THREE.CylinderGeometry(2.65, 2.65, 0.08, 24), waterMat);
+  lowerWater.position.y = 0.58;
+  lowerWaterGroup.add(lowerWater);
+
+  // 4 Concentric foam impact rings where the 4 upper cascade streams hit the lower basin
+  const foamRings: THREE.Mesh[] = [];
+  const foamPositions = [
+    [1.25, 0],
+    [-1.25, 0],
+    [0, 1.25],
+    [0, -1.25],
+  ];
+  foamPositions.forEach(([fx, fz]) => {
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.08, 0.28, 12), foamMat);
+    ring.position.set(fx, 0.63, fz);
+    ring.rotation.x = -Math.PI * 0.5;
+    lowerWaterGroup.add(ring);
+    foamRings.push(ring);
+  });
+
+  group.add(lowerWaterGroup);
+
+  // 3. Central Fluted Acanthus Pedestal Column
+  const pedestalGroup = new THREE.Group();
+
+  // Torus base molding
+  const pedTorus = new THREE.Mesh(new THREE.TorusGeometry(0.72, 0.11, 8, 16), stoneMat);
+  pedTorus.position.y = 0.68;
+  pedTorus.rotation.x = Math.PI * 0.5;
+  pedestalGroup.add(pedTorus);
+
+  // Fluted column shaft
+  const pedShaft = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.72, 1.55, 12), stoneMat);
+  pedShaft.position.y = 1.45;
+  pedShaft.castShadow = true;
+  pedestalGroup.add(pedShaft);
+
+  // 4 Carved Acanthus leaf support corbels under upper basin
+  spoutAngles.forEach((ang) => {
+    const corbel = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.42, 0.38), stoneMat);
+    corbel.position.set(Math.sin(ang) * 0.58, 2.05, Math.cos(ang) * 0.58);
+    corbel.rotation.y = ang;
+    corbel.rotation.x = 0.32;
+    pedestalGroup.add(corbel);
+  });
+
+  group.add(pedestalGroup);
+
+  // 4. Scalloped Clam-Shell Upper Basin & Cascade Streams
+  const upperBasinGroup = new THREE.Group();
+  upperBasinGroup.name = 'fountain_basin_upper';
+
+  // Scalloped stone upper bowl
+  const upperBowl = new THREE.Mesh(new THREE.CylinderGeometry(1.48, 1.05, 0.38, 16), stoneMat);
+  upperBowl.position.y = 2.25;
+  upperBowl.castShadow = true;
+  upperBowl.receiveShadow = true;
+  upperBasinGroup.add(upperBowl);
+
+  const upperRim = new THREE.Mesh(new THREE.TorusGeometry(1.48, 0.065, 8, 20), stoneMat);
+  upperRim.position.y = 2.42;
+  upperRim.rotation.x = Math.PI * 0.5;
+  upperBasinGroup.add(upperRim);
+
+  // Upper water pool
+  const upperWater = new THREE.Mesh(new THREE.CylinderGeometry(1.36, 1.36, 0.06, 16), waterMat);
+  upperWater.position.y = 2.38;
+  upperBasinGroup.add(upperWater);
+
+  // Splash ring on upper water from Naiad amphora
+  const amphoraSplash = new THREE.Mesh(new THREE.RingGeometry(0.06, 0.22, 12), foamMat);
+  amphoraSplash.position.set(0.32, 2.42, 0.15);
+  amphoraSplash.rotation.x = -Math.PI * 0.5;
+  upperBasinGroup.add(amphoraSplash);
+
+  // 4 Parabolic swept water cascade streams falling into lower basin
+  const cascadeStreams: THREE.Mesh[] = [];
+  foamPositions.forEach(([fx, fz]) => {
+    const topX = fx * 0.95;
+    const topZ = fz * 0.95;
+    const midX = fx * 1.05;
+    const midZ = fz * 1.05;
+
+    const streamCurve = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(topX, 2.38, topZ),
+      new THREE.Vector3(midX, 1.55, midZ),
+      new THREE.Vector3(fx, 0.62, fz),
+    ]);
+    const streamGeo = new THREE.TubeGeometry(streamCurve, 12, 0.038, 6, false);
+    const streamMesh = new THREE.Mesh(streamGeo, cascadeMat);
+    upperBasinGroup.add(streamMesh);
+    cascadeStreams.push(streamMesh);
+  });
+
+  group.add(upperBasinGroup);
+
+  // 5. Crowning Centerpiece: Sculpted Astrological Water Naiad Maiden
+  const naiadGroup = new THREE.Group();
+  naiadGroup.name = 'fountain_naiad';
+  naiadGroup.position.set(0, 2.44, 0);
+
+  // Center marble plinth
+  const naiadPlinth = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.44, 0.22, 10), marbleMat);
+  naiadPlinth.position.y = 0.11;
+  naiadPlinth.castShadow = true;
+  naiadGroup.add(naiadPlinth);
+
+  // Swept classical chiton draped gown
+  const gownGeo = new THREE.CylinderGeometry(0.18, 0.36, 0.78, 10);
+  const gown = new THREE.Mesh(gownGeo, marbleMat);
+  gown.position.y = 0.55;
+  gown.castShadow = true;
+  naiadGroup.add(gown);
+
+  // Torso with draped sash folds
+  const naiadTorso = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.17, 0.45, 8), marbleMat);
+  naiadTorso.position.y = 1.02;
+  naiadTorso.rotation.z = -0.06;
+  naiadTorso.castShadow = true;
+  naiadGroup.add(naiadTorso);
+
+  // Sculpted maiden head & braided classical hair locks
+  const maidenHead = new THREE.Mesh(new THREE.SphereGeometry(0.13, 10, 8), marbleMat);
+  maidenHead.position.set(0.02, 1.34, 0.02);
+  maidenHead.castShadow = true;
+  naiadGroup.add(maidenHead);
+
+  // Hair braid buns
+  [-0.08, 0.08].forEach((bx) => {
+    const hairLock = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.02, 0.25, 6), marbleMat);
+    hairLock.position.set(bx, 1.25, -0.08);
+    hairLock.rotation.x = -0.3;
+    naiadGroup.add(hairLock);
+  });
+
+  // Crown circlet
+  const circlet = new THREE.Mesh(new THREE.TorusGeometry(0.13, 0.015, 6, 12), goldTrimMat);
+  circlet.position.set(0.02, 1.38, 0.02);
+  circlet.rotation.x = Math.PI * 0.45;
+  naiadGroup.add(circlet);
+
+  // Tilted Celestial Amphora (Urn) resting on shoulder
+  const urnGroup = new THREE.Group();
+  urnGroup.position.set(0.16, 1.15, 0.08);
+  urnGroup.rotation.set(-0.45, 0.2, -0.65);
+
+  const urnBody = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.09, 0.42, 8), marbleMat);
+  urnBody.castShadow = true;
+  urnGroup.add(urnBody);
+
+  const urnBand = new THREE.Mesh(new THREE.TorusGeometry(0.142, 0.012, 6, 12), goldTrimMat);
+  urnGroup.add(urnBand);
+
+  const urnNeck = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.11, 0.14, 8), marbleMat);
+  urnNeck.position.y = 0.26;
+  urnGroup.add(urnNeck);
+
+  const urnLip = new THREE.Mesh(new THREE.TorusGeometry(0.08, 0.015, 6, 10), goldTrimMat);
+  urnLip.position.y = 0.33;
+  urnLip.rotation.x = Math.PI * 0.5;
+  urnGroup.add(urnLip);
+
+  naiadGroup.add(urnGroup);
+
+  // Smooth parabolic water arc pouring from the amphora into upper basin
+  const amphoraStreamCurve = new THREE.CatmullRomCurve3([
+    new THREE.Vector3(0.28, 1.28, 0.12),
+    new THREE.Vector3(0.36, 0.95, 0.15),
+    new THREE.Vector3(0.32, 0.08, 0.15),
+  ]);
+  const amphoraStream = new THREE.Mesh(
+    new THREE.TubeGeometry(amphoraStreamCurve, 10, 0.03, 6, false),
+    cascadeMat
+  );
+  naiadGroup.add(amphoraStream);
+
+  group.add(naiadGroup);
+
+  // --- Dynamic Two-Layer Water Animation Update Loop ---
   let time = 0;
+
   return {
     group,
     update: (dt: number) => {
-      time += dt;
-      lowerWater.position.y = 0.55 + Math.sin(time * 2.5) * 0.015;
-      sprayJet.scale.y = 0.85 + Math.sin(time * 5.0) * 0.15;
-      sprayJet.rotation.y += dt * 1.5;
+      const safeDt = Number.isFinite(dt) && dt > 0 ? Math.min(dt, 0.2) : 0.016;
+      time += safeDt;
+
+      // Harmonic ripple wave oscillation on lower and upper water surfaces
+      lowerWater.position.y = 0.58 + Math.sin(time * 2.6) * 0.014;
+      upperWater.position.y = 2.38 + Math.sin(time * 3.2) * 0.01;
+
+      // Splashing foam rings pulsation & expansion
+      foamRings.forEach((ring, idx) => {
+        const pulse = Math.sin(time * 4.5 + idx * 1.57);
+        ring.scale.setScalar(0.92 + pulse * 0.14);
+      });
+
+      amphoraSplash.scale.setScalar(0.9 + Math.sin(time * 5.2) * 0.16);
+
+      // Cascade streams dynamic pulse shimmer
+      cascadeStreams.forEach((stream, idx) => {
+        const streamWave = Math.sin(time * 6.0 + idx * 1.2) * 0.06;
+        stream.scale.set(1 + streamWave, 1, 1 + streamWave);
+      });
+      amphoraStream.scale.set(1 + Math.sin(time * 7.0) * 0.08, 1, 1 + Math.sin(time * 7.0) * 0.08);
     },
   };
 }
 
 export function createLanternPost(): THREE.Group {
   const group = new THREE.Group();
+  group.name = 'lantern_root';
 
   const ironMat = new THREE.MeshStandardMaterial({
-    color: 0x1e293b,
-    roughness: 0.6,
-    metalness: 0.75,
+    color: 0x1a202c,
+    roughness: 0.55,
+    metalness: 0.82,
   });
+  const graniteMat = new THREE.MeshStandardMaterial({
+    color: 0x5b6475,
+    roughness: 0.9,
+    metalness: 0.05,
+  });
+  const glassMat = new THREE.MeshBasicMaterial({
+    color: 0xfef08a,
+    transparent: true,
+    opacity: 0.85,
+  });
+  const flameMat = new THREE.MeshBasicMaterial({ color: 0xf59e0b });
+  const waxMat = new THREE.MeshStandardMaterial({ color: 0xffedd5, roughness: 0.75 });
 
-  // Base
-  const base = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.35, 0.25, 8), ironMat);
-  base.position.y = 0.125;
-  group.add(base);
+  // 1. Octagonal Cut-Stone Plinth & Fluted Cast-Iron Base
+  const baseGroup = new THREE.Group();
+  baseGroup.name = 'lantern_base';
 
-  // Main Pole
-  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 3.0, 8), ironMat);
-  pole.position.y = 1.6;
+  // Stepped octagonal granite ground pad (sits flush at y = 0)
+  const stonePad = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.46, 0.14, 8), graniteMat);
+  stonePad.position.y = 0.07;
+  stonePad.receiveShadow = true;
+  baseGroup.add(stonePad);
+
+  // Fluted cast-iron bell pedestal base
+  const bellBase = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.35, 0.44, 8), ironMat);
+  bellBase.position.y = 0.34;
+  bellBase.castShadow = true;
+  baseGroup.add(bellBase);
+
+  // Base collar molding
+  const baseCollar = new THREE.Mesh(new THREE.TorusGeometry(0.23, 0.026, 6, 12), ironMat);
+  baseCollar.position.y = 0.54;
+  baseCollar.rotation.x = Math.PI * 0.5;
+  baseGroup.add(baseCollar);
+
+  group.add(baseGroup);
+
+  // 2. Tapered Fluted Shaft Column
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.1, 2.7, 8), ironMat);
+  pole.name = 'lantern_pole';
+  pole.position.y = 1.88;
   pole.castShadow = true;
   group.add(pole);
 
-  // Cross arm
-  const arm = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.08, 0.08), ironMat);
-  arm.position.set(0.22, 3.0, 0);
-  group.add(arm);
+  // Mid-height decorative astragal ring
+  const astragal = new THREE.Mesh(new THREE.TorusGeometry(0.095, 0.018, 6, 10), ironMat);
+  astragal.position.y = 1.95;
+  astragal.rotation.x = Math.PI * 0.5;
+  group.add(astragal);
 
-  // Hanging Lantern Housing
-  const lanternFrame = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.42, 0.3), ironMat);
-  lanternFrame.position.set(0.45, 2.75, 0);
-  group.add(lanternFrame);
+  // Gothic capital block
+  const capital = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.16, 0.22), ironMat);
+  capital.position.y = 3.25;
+  group.add(capital);
 
-  // Glowing Lantern Glass Core
-  const glowMat = new THREE.MeshBasicMaterial({ color: 0xfef08a });
-  const lanternGlass = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.34, 0.24), glowMat);
-  lanternGlass.position.set(0.45, 2.75, 0);
-  group.add(lanternGlass);
+  // 3. Spline-Swept Gothic Scrollwork Arch Bracket
+  const bracketGroup = new THREE.Group();
+  bracketGroup.name = 'lantern_bracket';
+
+  const scrollPoints = [
+    new THREE.Vector3(0, 3.25, 0),
+    new THREE.Vector3(0.28, 3.52, 0),
+    new THREE.Vector3(0.55, 3.58, 0),
+    new THREE.Vector3(0.72, 3.38, 0),
+    new THREE.Vector3(0.72, 3.2, 0),
+  ];
+  const scrollCurve = new THREE.CatmullRomCurve3(scrollPoints);
+  const scrollArm = new THREE.Mesh(new THREE.TubeGeometry(scrollCurve, 16, 0.022, 6, false), ironMat);
+  bracketGroup.add(scrollArm);
+
+  // Diagonal support strut
+  const strut = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 0.48, 6), ironMat);
+  strut.position.set(0.32, 3.22, 0);
+  strut.rotation.z = -0.75;
+  bracketGroup.add(strut);
+
+  group.add(bracketGroup);
+
+  // 4. Hexagonal Beveled Stained-Glass Lantern Cage & Amber Flame
+  const cageGroup = new THREE.Group();
+  cageGroup.name = 'lantern_cage';
+  cageGroup.position.set(0.72, 2.82, 0);
+
+  // Top pyramidal roof cap
+  const roofCap = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.28, 0.22, 6), ironMat);
+  roofCap.position.y = 0.28;
+  cageGroup.add(roofCap);
+
+  // Top suspension ring connecting to hook
+  const hangRing = new THREE.Mesh(new THREE.TorusGeometry(0.045, 0.012, 6, 8), ironMat);
+  hangRing.position.y = 0.41;
+  cageGroup.add(hangRing);
+
+  // Hexagonal beveled glass lantern body
+  const glassCore = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.16, 0.38, 6), glassMat);
+  cageGroup.add(glassCore);
+
+  // 6 Vertical corner iron struts
+  for (let i = 0; i < 6; i++) {
+    const ang = (i * Math.PI * 2) / 6;
+    const strutMesh = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.38, 0.022), ironMat);
+    strutMesh.position.set(Math.sin(ang) * 0.19, 0, Math.cos(ang) * 0.19);
+    cageGroup.add(strutMesh);
+  }
+
+  // Inner white candle column
+  const candle = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.14, 6), waxMat);
+  candle.position.y = -0.06;
+  cageGroup.add(candle);
+
+  // Animated teardrop flame core
+  const flame = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.12, 6), flameMat);
+  flame.name = 'lantern_flame';
+  flame.position.y = 0.07;
+  cageGroup.add(flame);
+
+  // Lower tapered iron finial
+  const finial = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.14, 6), ironMat);
+  finial.position.y = -0.26;
+  finial.rotation.x = Math.PI;
+  cageGroup.add(finial);
+
+  group.add(cageGroup);
 
   return group;
 }

@@ -13,6 +13,8 @@ import {
   createArchmageAurelius,
   createVillageCottage,
   createEldrinScout,
+  createTownFountain,
+  createLanternPost,
 } from '../src/engine/ProceduralModels';
 
 describe('Astrolabe Grimoire SVG Plotter', () => {
@@ -511,5 +513,95 @@ describe('Solstice Haven Village Cottages Architectural Framing', () => {
       }
     });
     expect(triangles).toBeLessThan(3500);
+  });
+});
+
+describe('Solstice Haven Central Town Fountain & Gothic Street Lanterns', () => {
+  it('creates the sculpted town fountain with water naiad, scalloped basins, and dynamic water', () => {
+    const fountain = createTownFountain();
+    expect(fountain.group).toBeInstanceOf(THREE.Group);
+    expect(fountain.group.name).toBe('fountain_root');
+
+    let foundLowerBasin = false;
+    let foundUpperBasin = false;
+    let foundNaiad = false;
+    let foundWater = false;
+
+    fountain.group.traverse((child) => {
+      if (child.name === 'fountain_basin_lower') foundLowerBasin = true;
+      if (child.name === 'fountain_basin_upper') foundUpperBasin = true;
+      if (child.name === 'fountain_naiad') foundNaiad = true;
+      if (child.name === 'fountain_water') foundWater = true;
+    });
+
+    expect(foundLowerBasin).toBe(true);
+    expect(foundUpperBasin).toBe(true);
+    expect(foundNaiad).toBe(true);
+    expect(foundWater).toBe(true);
+  });
+
+  it('updates the fountain water ripple and cascade animation without throwing', () => {
+    const fountain = createTownFountain();
+    for (const dt of [0.016, 0.1, 1.0, 5.0, 0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(() => fountain.update(dt)).not.toThrow();
+    }
+
+    fountain.group.traverse((child) => {
+      const p = child.position;
+      const q = child.quaternion;
+      const s = child.scale;
+      for (const v of [p.x, p.y, p.z, q.x, q.y, q.z, q.w, s.x, s.y, s.z]) {
+        expect(Number.isFinite(v)).toBe(true);
+      }
+    });
+  });
+
+  it('stays within the mobile triangle budget (<3,500 tris) for the central fountain', () => {
+    const fountain = createTownFountain();
+    let triangles = 0;
+    fountain.group.traverse((child) => {
+      if (child instanceof THREE.Mesh) {
+        const geo = child.geometry as THREE.BufferGeometry;
+        const tris = (geo.index ? geo.index.count : geo.attributes.position.count) / 3;
+        triangles += tris;
+      }
+    });
+    expect(triangles).toBeLessThan(3500);
+  });
+
+  it('creates the gothic wrought-iron street lantern with scrollwork bracket and glowing cage', () => {
+    const lantern = createLanternPost();
+    expect(lantern).toBeInstanceOf(THREE.Group);
+    expect(lantern.name).toBe('lantern_root');
+
+    let foundBase = false;
+    let foundPole = false;
+    let foundBracket = false;
+    let foundCage = false;
+
+    lantern.traverse((child) => {
+      if (child.name === 'lantern_base') foundBase = true;
+      if (child.name === 'lantern_pole') foundPole = true;
+      if (child.name === 'lantern_bracket') foundBracket = true;
+      if (child.name === 'lantern_cage') foundCage = true;
+    });
+
+    expect(foundBase).toBe(true);
+    expect(foundPole).toBe(true);
+    expect(foundBracket).toBe(true);
+    expect(foundCage).toBe(true);
+  });
+
+  it('stays within the compact mobile budget (<1,000 tris) for each street lantern', () => {
+    const lantern = createLanternPost();
+    let triangles = 0;
+    lantern.traverse((child) => {
+      if (child instanceof THREE.Mesh) {
+        const geo = child.geometry as THREE.BufferGeometry;
+        const tris = (geo.index ? geo.index.count : geo.attributes.position.count) / 3;
+        triangles += tris;
+      }
+    });
+    expect(triangles).toBeLessThan(1000);
   });
 });

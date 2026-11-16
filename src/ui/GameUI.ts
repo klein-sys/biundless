@@ -425,6 +425,12 @@ export class GameUI {
     if (this.hudTopRight) this.hudTopRight.classList.toggle('hud-hidden', !visible);
     if (this.hudBottomRight) this.hudBottomRight.classList.toggle('hud-hidden', !visible);
     if (this.pointerHint) this.pointerHint.classList.toggle('hidden', !visible);
+    if (this.bossHud) this.bossHud.classList.toggle('hud-hidden', !visible);
+    if (this.mobileControls) this.mobileControls.classList.toggle('hud-hidden', !visible);
+    if (this.regionBanner) this.regionBanner.classList.toggle('hidden', !visible);
+    if (this.fpReticle) this.fpReticle.classList.toggle('hidden', !visible);
+    if (this.interactPrompt && !visible) this.interactPrompt.classList.add('hidden');
+    if (this.combatToast && !visible) this.combatToast.classList.add('hidden');
   }
 
   public isTitleSettingsOpen(): boolean {
@@ -1164,6 +1170,7 @@ export class GameUI {
   }
 
   public showBossCutscene(bossId: BossId, onFinish?: () => void): void {
+    this.setHUDVisible(false);
     const cfg = BOSS_CONFIGS[bossId];
     this.cutsceneBossName.textContent = cfg.name.toUpperCase();
     this.cutsceneBossTitle.textContent = `${cfg.title} · Sovereign of Phase Harmonics`;
@@ -1175,6 +1182,7 @@ export class GameUI {
   public hideBossCutscene(): void {
     if (!this.cutsceneOverlay.classList.contains('hidden')) {
       this.cutsceneOverlay.classList.add('hidden');
+      this.setHUDVisible(true);
       if (this.cutsceneFinishCb) {
         const cb = this.cutsceneFinishCb;
         this.cutsceneFinishCb = null;

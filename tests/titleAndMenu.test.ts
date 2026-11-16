@@ -783,15 +783,26 @@ describe('GameUI Title Screen Sidebar & In-Sidebar Settings Switch', () => {
 
     expect(ui.isCutsceneActive()).toBe(true);
 
+    // Verify HUD is hidden during boss cutscene for immersion
+    const topLeft = root.querySelector('.hud-top-left')!;
+    const topRight = root.querySelector('.hud-top-right')!;
+    const bottomRight = root.querySelector('.hud-bottom-right')!;
+    expect(topLeft.classList.contains('hud-hidden')).toBe(true);
+    expect(topRight.classList.contains('hud-hidden')).toBe(true);
+    expect(bottomRight.classList.contains('hud-hidden')).toBe(true);
+
     const nameEl = root.querySelector('#cutscene-boss-name')!;
     expect(nameEl.textContent).toBe('VESPERA');
 
     const bannerEl = root.querySelector('#boss-cutscene-banner')!;
     expect(bannerEl).not.toBeNull();
 
-    // Hide cutscene (skip or finished)
+    // Hide cutscene (skip or finished) - restores HUD visibility
     ui.hideBossCutscene();
     expect(ui.isCutsceneActive()).toBe(false);
     expect(finished).toBe(true);
+    expect(topLeft.classList.contains('hud-hidden')).toBe(false);
+    expect(topRight.classList.contains('hud-hidden')).toBe(false);
+    expect(bottomRight.classList.contains('hud-hidden')).toBe(false);
   });
 });

@@ -688,6 +688,11 @@ export class GameEngine {
     this.playerYaw = Math.atan2(boss.homeX - this.playerPos.x, boss.homeZ - this.playerPos.z);
     this.playerRig.root.rotation.y = this.playerYaw;
 
+    // Hide sword, magic focus, and tangent visual during cutscene
+    this.playerRig.bladePivot.visible = false;
+    this.playerRig.firstPersonBlade.visible = false;
+    this.tangentArc.group.visible = false;
+
     this.audio.playBossCue();
     this.ui.showBossCutscene(bossId, () => {
       this.endBossCutscene();
@@ -698,6 +703,9 @@ export class GameEngine {
     if (!this.isCutscenePlaying) return;
     this.isCutscenePlaying = false;
     this.ui.hideBossCutscene();
+    // Restore weapon & viewmodel visuals upon cutscene completion
+    this.playerRig.bladePivot.visible = true;
+    this.playerRig.setFirstPersonHidden(this.cameraCtrl.pov === 'first');
     if (this.cutsceneBossId) {
       const boss = this.bossRuntimes[this.cutsceneBossId];
       engageBoss(boss);
@@ -804,6 +812,8 @@ export class GameEngine {
     const look = this.input.consumeLookDelta();
     this.cameraCtrl.applyLookDelta(look.dx, look.dy, this.settings.sensitivity);
 
+    const isDialogueActive = this.dialogueRunner.isOpen;
+
     // Discrete Inputs
     if (this.input.buffer.consume('togglePov', nowSec)) {
       this.handleTogglePov();
@@ -814,34 +824,44 @@ export class GameEngine {
     if (this.input.buffer.consume('interact', nowSec)) {
       this.handleInteract();
     }
-    if (this.input.buffer.consume('heal', nowSec) && tryUseHealFlask(this.player)) {
-      this.audio.playHeal();
-      this.vfx.spawnBurst(
-        new THREE.Vector3(this.playerPos.x, this.playerPos.y + 1.2, this.playerPos.z),
-        0xf2c864,
-        18,
-        4.2,
-        0.48,
-      );
-      this.ui.showToast('CRIMSON FLASK RESTORED HP');
-    }
 
-    // Jump Input
-    if (this.input.buffer.consume('jump', nowSec) && this.isGrounded) {
-      this.playerVelocityY = 9.8;
-      this.isGrounded = false;
-      this.audio.playJump();
+    if (isDialogueActive) {
+      // Immobilize: discard combat, heal, jump, and dodge inputs during NPC dialogue
+      this.input.buffer.consume('heal', nowSec);
+      this.input.buffer.consume('jump', nowSec);
+      this.input.buffer.consume('dodge', nowSec);
+      this.input.buffer.consume('attack', nowSec);
+      this.input.buffer.consume('castSigil', nowSec);
+    } else {
+      if (this.input.buffer.consume('heal', nowSec) && tryUseHealFlask(this.player)) {
+        this.audio.playHeal();
+        this.vfx.spawnBurst(
+          new THREE.Vector3(this.playerPos.x, this.playerPos.y + 1.2, this.playerPos.z),
+          0xf2c864,
+          18,
+          4.2,
+          0.48,
+        );
+        this.ui.showToast('CRIMSON FLASK RESTORED HP');
+      }
+
+      // Jump Input
+      if (this.input.buffer.consume('jump', nowSec) && this.isGrounded) {
+        this.playerVelocityY = 9.8;
+        this.isGrounded = false;
+        this.audio.playJump();
+      }
     }
 
     // Movement & Sprint
-    const move = this.input.getMoveVector();
+    const move = isDialogueActive ? { x: 0, y: 0 } : this.input.getMoveVector();
     this.cameraCtrl.getForwardXZ(this.forwardVec);
     this.cameraCtrl.getRightXZ(this.rightVec);
 
-    const worldMoveX = this.rightVec.x * move.x - this.forwardVec.x * move.y;
-    const worldMoveZ = this.rightVec.y * move.x - this.forwardVec.y * move.y;
+    const worldMoveX = isDialogueActive ? 0 : (this.rightVec.x * move.x - this.forwardVec.x * move.y);
+    const worldMoveZ = isDialogueActive ? 0 : (this.rightVec.y * move.x - this.forwardVec.y * move.y);
 
-    if (this.input.buffer.consume('dodge', nowSec)) {
+    if (!isDialogueActive && this.input.buffer.consume('dodge', nowSec)) {
       if (tryStartDodge(this.player, { x: worldMoveX, z: worldMoveZ })) {
         this.audio.playDodge();
         this.vfx.spawnBurst(
@@ -852,6 +872,15 @@ export class GameEngine {
           0.38,
         );
       }
+    }
+
+    if (isDialogueActive && this.nearbyNpc) {
+      // Smoothly orient player to face the speaking NPC in attentive stance
+      const targetYaw = Math.atan2(this.nearbyNpc.position.x - this.playerPos.x, this.nearbyNpc.position.z - this.playerPos.z);
+      let diff = targetYaw - this.playerYaw;
+      while (diff > Math.PI) diff -= Math.PI * 2;
+      while (diff < -Math.PI) diff += Math.PI * 2;
+      this.playerYaw += diff * Math.min(1, 10 * dt);
     }
 
     stepPlayerState(this.player, dt);
@@ -956,12 +985,14 @@ export class GameEngine {
       this.ui.hideInteractPrompt();
     }
 
-    // Combat actions
-    if (this.input.buffer.consume('attack', nowSec) && this.player.attackCooldown <= 0) {
-      this.performBasicAttack();
-    }
-    if (this.input.buffer.consume('castSigil', nowSec) && this.player.resonanceCooldown <= 0) {
-      this.performResonanceCast();
+    // Combat actions (only when not in dialogue)
+    if (!isDialogueActive) {
+      if (this.input.buffer.consume('attack', nowSec) && this.player.attackCooldown <= 0) {
+        this.performBasicAttack();
+      }
+      if (this.input.buffer.consume('castSigil', nowSec) && this.player.resonanceCooldown <= 0) {
+        this.performResonanceCast();
+      }
     }
 
     // Blade swing animation
