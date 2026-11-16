@@ -34,6 +34,7 @@ import {
   type ProgressionState,
 } from '../rpg/progressionSystem';
 import { InteractiveAtlas, worldToMapNormalized } from './InteractiveAtlas';
+import { fullscreenManager } from './FullscreenManager';
 
 export interface TelemetrySnapshot {
   fps: number;
@@ -100,6 +101,7 @@ export class GameUI {
   private flaskPill!: HTMLElement;
   private povBtn!: HTMLElement;
   private menuBtn!: HTMLElement;
+  private fullscreenBtn!: HTMLElement;
   private fpsBadge!: HTMLElement;
 
   private interactPrompt!: HTMLElement;
@@ -198,9 +200,15 @@ export class GameUI {
         <span id="region-sub" class="region-sub">Waypoint Shrine</span>
       </div>
 
-      <!-- Top Right: Exactly 2 Clean Icon Buttons + Optional FPS -->
+      <!-- Top Right: Icon Buttons + Optional FPS -->
       <div class="hud-top-right interactive">
         <div id="fps-badge" class="fps-pill hidden">60 FPS</div>
+        <button id="btn-fullscreen" class="circle-btn" title="Toggle Fullscreen (F11 / Tap)">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
+          </svg>
+          <span class="btn-subtext">FULL</span>
+        </button>
         <button id="btn-pov" class="circle-btn" title="Toggle 3rd / 1st POV (V)">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="12" r="3"/><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
@@ -381,7 +389,19 @@ export class GameUI {
     this.flaskPill = this.root.querySelector('#flask-pill')!;
     this.povBtn = this.root.querySelector('#btn-pov')!;
     this.menuBtn = this.root.querySelector('#btn-menu')!;
+    this.fullscreenBtn = this.root.querySelector('#btn-fullscreen')!;
     this.fpsBadge = this.root.querySelector('#fps-badge')!;
+
+    if (this.fullscreenBtn) {
+      this.fullscreenBtn.addEventListener('click', () => {
+        fullscreenManager.toggle();
+      });
+      fullscreenManager.onChange((isFullscreen) => {
+        const sub = this.fullscreenBtn.querySelector('.btn-subtext');
+        if (sub) sub.textContent = isFullscreen ? 'EXIT' : 'FULL';
+        this.fullscreenBtn.title = isFullscreen ? 'Exit Fullscreen' : 'Toggle Fullscreen (F11 / Tap)';
+      });
+    }
 
     this.interactPrompt = this.root.querySelector('#interact-prompt')!;
     this.interactLabel = this.root.querySelector('#interact-label')!;
@@ -626,12 +646,28 @@ export class GameUI {
               <button id="start-dragon-btn" class="adv-btn sm">Skyridge Peak (sec/csc)</button>
             </div>
             <div class="title-footer-row">
+              <button id="btn-title-fullscreen" class="adv-btn text-btn">⛶ Fullscreen View</button>
+              <button id="btn-title-controls" class="adv-btn text-btn">📖 Controls Guide</button>
               <button id="btn-title-settings" class="adv-btn text-btn">⚙ Sanctuary Settings</button>
             </div>
           </div>
         </div>
       </div>
     `;
+
+    const titleFsBtn = this.titleOverlay.querySelector('#btn-title-fullscreen');
+    if (titleFsBtn) {
+      titleFsBtn.addEventListener('click', () => {
+        fullscreenManager.toggle();
+      });
+    }
+
+    const titleControlsBtn = this.titleOverlay.querySelector('#btn-title-controls');
+    if (titleControlsBtn) {
+      titleControlsBtn.addEventListener('click', () => {
+        this.openSettingsModal(this.currentSettings, undefined, undefined, false, undefined, 'controls');
+      });
+    }
 
     const startHub = this.titleOverlay.querySelector('#start-hub-btn');
     if (startHub) {
@@ -1023,7 +1059,7 @@ export class GameUI {
     boss?: BossRuntime | null,
     freezeTheta?: boolean,
     telemetry?: TelemetrySnapshot,
-    initialTab: 'gameplay' | 'dev' = 'gameplay',
+    initialTab: 'gameplay' | 'dev' | 'controls' = 'gameplay',
     progression?: ProgressionState,
   ): void {
     this.currentSettings = settings;
@@ -1031,7 +1067,7 @@ export class GameUI {
     const presets: GraphicsPreset[] = ['low', 'medium', 'high', 'ultra'];
     const fpsCaps: FpsCap[] = [30, 60, 120, 0];
     const controls: ControlSchemeMode[] = ['auto', 'desktop', 'mobile'];
-    const isDev = initialTab === 'dev';
+    const activeTab = initialTab;
 
     const maxHp = player ? computeEffectiveStat(player, 'maxHp') : 160;
     const maxStam = player ? computeEffectiveStat(player, 'maxStamina') : 100;
@@ -1042,11 +1078,12 @@ export class GameUI {
     this.settingsModal.innerHTML = `
       <div class="adventure-modal settings-card pause-modal">
         <div class="modal-tabs">
-          <button id="tab-gameplay" class="tab-btn ${!isDev ? 'active' : ''}">✧ SANCTUARY RESUME ✧</button>
-          <button id="tab-dev" class="tab-btn ${isDev ? 'active' : ''}">MATH 101 & DEV</button>
+          <button id="tab-gameplay" class="tab-btn ${activeTab === 'gameplay' ? 'active' : ''}">✧ SANCTUARY RESUME ✧</button>
+          <button id="tab-controls" class="tab-btn ${activeTab === 'controls' ? 'active' : ''}">CONTROLS (PC & MOBILE)</button>
+          <button id="tab-dev" class="tab-btn ${activeTab === 'dev' ? 'active' : ''}">MATH 101 & DEV</button>
         </div>
 
-        <div id="tab-body-gameplay" class="tab-body ${isDev ? 'hidden' : ''}">
+        <div id="tab-body-gameplay" class="tab-body ${activeTab === 'gameplay' ? '' : 'hidden'}">
           <!-- Hero Status Card -->
           <div class="hero-pause-card">
             <div class="hero-pause-header">
@@ -1080,6 +1117,9 @@ export class GameUI {
           <div class="pause-actions-grid">
             <button id="opt-resume" class="adv-btn primary pause-btn">
               <span class="btn-icon">▶</span> Resume Adventure <span class="kbd-hint">Esc</span>
+            </button>
+            <button id="opt-fullscreen" class="adv-btn pause-btn">
+              <span class="btn-icon">⛶</span> Toggle Fullscreen Mode
             </button>
             <button id="opt-save" class="adv-btn pause-btn">
               <span class="btn-icon">💾</span> Save Progress
@@ -1158,7 +1198,139 @@ export class GameUI {
           </div>
         </div>
 
-        <div id="tab-body-dev" class="tab-body ${isDev ? '' : 'hidden'}">
+        <!-- Tab: Controls Guide (PC & Mobile) -->
+        <div id="tab-body-controls" class="tab-body ${activeTab === 'controls' ? '' : 'hidden'}">
+          <div class="controls-guide-hero">
+            <div class="guide-hero-title">✦ ASTRAL CONTROLS & NAVIGATION REPERTOIRE ✦</div>
+            <p class="guide-hero-sub">Ergonomic key & touch bindings for PC Desktop and Mobile Devices</p>
+          </div>
+
+          <div class="controls-guide-grid">
+            <!-- Desktop Column -->
+            <div class="controls-column desktop-column">
+              <div class="controls-col-header">
+                <span class="col-icon">🖥️</span>
+                <span class="col-title">DESKTOP KEYBOARD & MOUSE</span>
+              </div>
+              <div class="controls-entries">
+                <div class="control-entry">
+                  <div class="key-badges"><span class="kbd">W</span><span class="kbd">A</span><span class="kbd">S</span><span class="kbd">D</span></div>
+                  <span class="entry-desc">Move Spellblade in 3D</span>
+                </div>
+                <div class="control-entry">
+                  <div class="key-badges"><span class="kbd">Shift</span></div>
+                  <span class="entry-desc">Sprint (Consumes Stamina)</span>
+                </div>
+                <div class="control-entry">
+                  <div class="key-badges"><span class="kbd">Space</span></div>
+                  <span class="entry-desc">Jump & Vault</span>
+                </div>
+                <div class="control-entry">
+                  <div class="key-badges"><span class="kbd">C</span><span class="badge-or">/</span><span class="kbd">Ctrl</span></div>
+                  <span class="entry-desc">Dash / Dodge (Invulnerability)</span>
+                </div>
+                <div class="control-entry">
+                  <div class="key-badges"><span class="kbd">LMB</span></div>
+                  <span class="entry-desc">Sword Strike (3-hit combo)</span>
+                </div>
+                <div class="control-entry">
+                  <div class="key-badges"><span class="kbd">RMB</span><span class="badge-or">/</span><span class="kbd">E</span></div>
+                  <span class="entry-desc">Cast Resonance Burst (Active Sigil)</span>
+                </div>
+                <div class="control-entry">
+                  <div class="key-badges"><span class="kbd">1–6</span><span class="badge-or">/</span><span class="kbd">Q</span></div>
+                  <span class="entry-desc">Attunement Wheel (0.2× Slow-Mo)</span>
+                </div>
+                <div class="control-entry">
+                  <div class="key-badges"><span class="kbd">Tab</span></div>
+                  <span class="entry-desc">Lock-On Nearest Boss / Enemy</span>
+                </div>
+                <div class="control-entry">
+                  <div class="key-badges"><span class="kbd">F</span></div>
+                  <span class="entry-desc">Interact / Talk with NPCs</span>
+                </div>
+                <div class="control-entry">
+                  <div class="key-badges"><span class="kbd">M</span></div>
+                  <span class="entry-desc">Open Sunlit Valley Atlas & Fast Travel</span>
+                </div>
+                <div class="control-entry">
+                  <div class="key-badges"><span class="kbd">V</span></div>
+                  <span class="entry-desc">Toggle 1st / 3rd Person Camera</span>
+                </div>
+                <div class="control-entry">
+                  <div class="key-badges"><span class="kbd">Esc</span></div>
+                  <span class="entry-desc">Sanctuary Menu & Pause</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Mobile Column -->
+            <div class="controls-column mobile-column">
+              <div class="controls-col-header">
+                <span class="col-icon">📱</span>
+                <span class="col-title">MOBILE TOUCH ERGONOMICS</span>
+              </div>
+              <div class="controls-entries">
+                <div class="control-entry">
+                  <div class="key-badges"><span class="touch-badge">🕹️ Compass Stick</span></div>
+                  <span class="entry-desc">Left thumb: 360° analog walk & run</span>
+                </div>
+                <div class="control-entry">
+                  <div class="key-badges"><span class="touch-badge strike">⚔️ STRIKE</span></div>
+                  <span class="entry-desc">Right thumb anchor: primary attack combo</span>
+                </div>
+                <div class="control-entry">
+                  <div class="key-badges"><span class="touch-badge cast">⚡ CAST</span></div>
+                  <span class="entry-desc">Radial sweep: resonant derivative burst</span>
+                </div>
+                <div class="control-entry">
+                  <div class="key-badges"><span class="touch-badge">💨 DASH</span></div>
+                  <span class="entry-desc">Radial sweep: quick mobility evade</span>
+                </div>
+                <div class="control-entry">
+                  <div class="key-badges"><span class="touch-badge">▲ JUMP</span></div>
+                  <span class="entry-desc">Radial sweep: leap over obstacles</span>
+                </div>
+                <div class="control-entry">
+                  <div class="key-badges"><span class="touch-badge">🎯 LOCK</span></div>
+                  <span class="entry-desc">Camera focus lock onto target</span>
+                </div>
+                <div class="control-entry">
+                  <div class="key-badges"><span class="touch-badge">🏛️ TOWN</span></div>
+                  <span class="entry-desc">Bottom bar: quick warp to Solstice Haven</span>
+                </div>
+                <div class="control-entry">
+                  <div class="key-badges"><span class="touch-badge">🧪 HEAL</span></div>
+                  <span class="entry-desc">Bottom bar: drink Crimson Flask (Charges)</span>
+                </div>
+                <div class="control-entry">
+                  <div class="key-badges"><span class="touch-badge">💬 TALK</span></div>
+                  <span class="entry-desc">Contextual prompt: converse with NPCs</span>
+                </div>
+                <div class="control-entry">
+                  <div class="key-badges"><span class="touch-badge">⚙️ SIGIL</span></div>
+                  <span class="entry-desc">Bottom bar: open Derivative Wheel</span>
+                </div>
+                <div class="control-entry">
+                  <div class="key-badges"><span class="touch-badge">🗺️ Radar</span></div>
+                  <span class="entry-desc">Top-left: tap minimap for Realm Atlas</span>
+                </div>
+                <div class="control-entry">
+                  <div class="key-badges"><span class="touch-badge">⛶ Fullscreen</span></div>
+                  <span class="entry-desc">Top-right: hide mobile address bar</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="controls-guide-footer">
+            <button id="guide-opt-fullscreen" class="adv-btn primary">
+              <span class="btn-icon">⛶</span> Toggle Fullscreen Mode (Hide Browser Search Bar)
+            </button>
+          </div>
+        </div>
+
+        <div id="tab-body-dev" class="tab-body ${activeTab === 'dev' ? '' : 'hidden'}">
           <div class="settings-group">
             <label class="setting-label">Class Presentation Overlay</label>
             <button id="dev-worked" class="adv-btn primary" style="width:100%;">Open MATH 101 Worked Example</button>
@@ -1197,22 +1369,31 @@ export class GameUI {
     `;
 
     const tabGameplay = this.settingsModal.querySelector('#tab-gameplay')!;
+    const tabControls = this.settingsModal.querySelector('#tab-controls')!;
     const tabDev = this.settingsModal.querySelector('#tab-dev')!;
     const bodyGameplay = this.settingsModal.querySelector('#tab-body-gameplay')!;
+    const bodyControls = this.settingsModal.querySelector('#tab-body-controls')!;
     const bodyDev = this.settingsModal.querySelector('#tab-body-dev')!;
 
-    tabGameplay.addEventListener('click', () => {
-      tabGameplay.classList.add('active');
-      tabDev.classList.remove('active');
-      bodyGameplay.classList.remove('hidden');
-      bodyDev.classList.add('hidden');
+    const switchTab = (t: 'gameplay' | 'controls' | 'dev') => {
+      tabGameplay.classList.toggle('active', t === 'gameplay');
+      tabControls.classList.toggle('active', t === 'controls');
+      tabDev.classList.toggle('active', t === 'dev');
+      bodyGameplay.classList.toggle('hidden', t !== 'gameplay');
+      bodyControls.classList.toggle('hidden', t !== 'controls');
+      bodyDev.classList.toggle('hidden', t !== 'dev');
+    };
+
+    tabGameplay.addEventListener('click', () => switchTab('gameplay'));
+    tabControls.addEventListener('click', () => switchTab('controls'));
+    tabDev.addEventListener('click', () => switchTab('dev'));
+
+    this.settingsModal.querySelector('#opt-fullscreen')?.addEventListener('click', () => {
+      fullscreenManager.toggle();
     });
 
-    tabDev.addEventListener('click', () => {
-      tabDev.classList.add('active');
-      tabGameplay.classList.remove('active');
-      bodyDev.classList.remove('hidden');
-      bodyGameplay.classList.add('hidden');
+    this.settingsModal.querySelector('#guide-opt-fullscreen')?.addEventListener('click', () => {
+      fullscreenManager.toggle();
     });
 
     this.settingsModal.querySelector('#opt-resume')?.addEventListener('click', () => {

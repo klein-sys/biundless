@@ -430,4 +430,37 @@ describe('GameUI Mobile Ergonomics & Atlas Integration', () => {
     const minimap = root.querySelector('#minimap-container');
     expect(minimap).not.toBeNull();
   });
+
+  it('contains the fullscreen HUD button and title screen controls shortcuts', () => {
+    const fsBtn = root.querySelector('#btn-fullscreen');
+    expect(fsBtn).not.toBeNull();
+
+    ui.showTitleOverlay();
+    const titleFsBtn = root.querySelector('#btn-title-fullscreen');
+    expect(titleFsBtn).not.toBeNull();
+
+    const titleControlsBtn = root.querySelector('#btn-title-controls');
+    expect(titleControlsBtn).not.toBeNull();
+  });
+
+  it('renders the PC & Mobile Controls Guide tab in the Sanctuary modal', () => {
+    ui.openSettingsModal(DEFAULT_SETTINGS, undefined, undefined, false, undefined, 'controls');
+
+    const tabControls = root.querySelector('#tab-controls');
+    expect(tabControls).not.toBeNull();
+    expect(tabControls!.classList.contains('active')).toBe(true);
+
+    const bodyControls = root.querySelector('#tab-body-controls');
+    expect(bodyControls).not.toBeNull();
+    expect(bodyControls!.classList.contains('hidden')).toBe(false);
+
+    const desktopCol = root.querySelector('.desktop-column');
+    expect(desktopCol).not.toBeNull();
+
+    const mobileCol = root.querySelector('.mobile-column');
+    expect(mobileCol).not.toBeNull();
+
+    const guideFs = root.querySelector('#guide-opt-fullscreen');
+    expect(guideFs).not.toBeNull();
+  });
 });
