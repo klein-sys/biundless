@@ -1120,109 +1120,530 @@ export interface VillageModelBundle {
 
 export function createVillageCottage(variant: number = 0): THREE.Group {
   const cottage = new THREE.Group();
+  cottage.name = 'cottage_root';
 
-  // Wall plaster color variants
-  const wallColors = [0xeadcc6, 0xdfd3be, 0xe5dbcb, 0xd8cdb6];
-  const roofColors = [0x3d4852, 0x6e3828, 0x46533f, 0x4f423b];
+  // Palette variant tuning
+  const wallColors = [0xdfd8cb, 0xe6e0d2, 0xd8cbba, 0xdfd6c6];
+  const roofColors = [0x334155, 0x3b4f3d, 0x7c2d12, 0x4a3c31];
+  const timberColors = [0x382212, 0x452a17, 0x301a0d, 0x3e2815];
+
   const wallColor = wallColors[variant % wallColors.length];
   const roofColor = roofColors[variant % roofColors.length];
+  const timberColor = timberColors[variant % timberColors.length];
 
-  // Plaster Main Body
-  const wallMat = new THREE.MeshStandardMaterial({
-    color: wallColor,
-    roughness: 0.85,
+  // Common Materials
+  const stoneMat = new THREE.MeshStandardMaterial({
+    color: 0x64748b,
+    roughness: 0.92,
     metalness: 0.05,
   });
-  const wallMesh = new THREE.Mesh(new THREE.BoxGeometry(4.6, 3.2, 4.0), wallMat);
-  wallMesh.position.y = 1.6;
+  const wallMat = new THREE.MeshStandardMaterial({
+    color: wallColor,
+    roughness: 0.88,
+    metalness: 0.02,
+  });
+  const timberMat = new THREE.MeshStandardMaterial({
+    color: timberColor,
+    roughness: 0.78,
+  });
+  const roofMat = new THREE.MeshStandardMaterial({
+    color: roofColor,
+    roughness: 0.82,
+  });
+  const chimneyMat = new THREE.MeshStandardMaterial({
+    color: 0x5b616e,
+    roughness: 0.94,
+  });
+  const chimneyPotMat = new THREE.MeshStandardMaterial({
+    color: 0x9a3412,
+    roughness: 0.75,
+  });
+  const doorWoodMat = new THREE.MeshStandardMaterial({
+    color: 0x422615,
+    roughness: 0.7,
+  });
+  const ironMat = new THREE.MeshStandardMaterial({
+    color: 0x24272c,
+    roughness: 0.4,
+    metalness: 0.85,
+  });
+  const windowGlowMat = new THREE.MeshBasicMaterial({ color: 0xfbbf24 });
+  const windowFrameMat = new THREE.MeshStandardMaterial({
+    color: 0x2d1a0e,
+    roughness: 0.75,
+  });
+  const foliageMat = new THREE.MeshStandardMaterial({
+    color: 0x2d5a27,
+    roughness: 0.85,
+  });
+  const flowerLavenderMat = new THREE.MeshStandardMaterial({ color: 0xa78bfa, roughness: 0.6 });
+  const flowerGoldMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.6 });
+  const flowerPinkMat = new THREE.MeshStandardMaterial({ color: 0xf472b6, roughness: 0.6 });
+
+  // 1. Cut-Stone Foundation Base Plinth (Sits firmly flush on terrain surface)
+  const foundation = new THREE.Group();
+  foundation.name = 'cottage_foundation';
+
+  // Base footing slab
+  const baseFooting = new THREE.Mesh(new THREE.BoxGeometry(5.02, 0.18, 4.42), stoneMat);
+  baseFooting.position.y = 0.09;
+  baseFooting.receiveShadow = true;
+  foundation.add(baseFooting);
+
+  // Main foundation masonry skirt
+  const baseSkirt = new THREE.Mesh(new THREE.BoxGeometry(4.82, 0.62, 4.22), stoneMat);
+  baseSkirt.position.y = 0.42;
+  baseSkirt.castShadow = true;
+  baseSkirt.receiveShadow = true;
+  foundation.add(baseSkirt);
+
+  // Corner stone quoins (layered architectural corner stones)
+  const quoinGeo = new THREE.BoxGeometry(0.38, 0.16, 0.38);
+  const quoinOffsets = [
+    [-2.35, -2.05],
+    [2.35, -2.05],
+    [-2.35, 2.05],
+    [2.35, 2.05],
+  ];
+  quoinOffsets.forEach(([qx, qz]) => {
+    for (let i = 0; i < 3; i++) {
+      const quoin = new THREE.Mesh(quoinGeo, stoneMat);
+      quoin.position.set(qx + (i % 2 === 0 ? 0.02 : -0.02), 0.18 + i * 0.2, qz);
+      quoin.castShadow = true;
+      foundation.add(quoin);
+    }
+  });
+
+  // Front cut-stone doorstep
+  const doorstep = new THREE.Mesh(new THREE.BoxGeometry(1.22, 0.14, 0.48), stoneMat);
+  doorstep.position.set(0, 0.07, 2.22);
+  doorstep.receiveShadow = true;
+  foundation.add(doorstep);
+
+  cottage.add(foundation);
+
+  // 2. Plaster Walls Main Body
+  const wallMesh = new THREE.Mesh(new THREE.BoxGeometry(4.5, 2.65, 3.9), wallMat);
+  wallMesh.position.y = 2.025;
   wallMesh.castShadow = true;
   wallMesh.receiveShadow = true;
   cottage.add(wallMesh);
 
-  // Timber Framing Posts (Corner columns and top sill)
-  const woodMat = new THREE.MeshStandardMaterial({
-    color: 0x4a2e18,
-    roughness: 0.75,
-  });
-  const postGeo = new THREE.BoxGeometry(0.3, 3.3, 0.3);
-  const corners = [
-    [-2.2, 1.65, -1.9],
-    [2.2, 1.65, -1.9],
-    [-2.2, 1.65, 1.9],
-    [2.2, 1.65, 1.9],
+  // 3. Half-Timbered Tudor Framing Structure
+  // Horizontal beams: Sill, Mid-belt, and Eaves plate
+  const sillBeam = new THREE.Mesh(new THREE.BoxGeometry(4.58, 0.12, 3.98), timberMat);
+  sillBeam.position.y = 0.73;
+  cottage.add(sillBeam);
+
+  const beltBeam = new THREE.Mesh(new THREE.BoxGeometry(4.58, 0.12, 3.98), timberMat);
+  beltBeam.position.y = 1.95;
+  cottage.add(beltBeam);
+
+  const eavesPlate = new THREE.Mesh(new THREE.BoxGeometry(4.58, 0.14, 3.98), timberMat);
+  eavesPlate.position.y = 3.32;
+  cottage.add(eavesPlate);
+
+  // 4 Massive corner vertical timber posts
+  const cornerPostGeo = new THREE.BoxGeometry(0.22, 2.65, 0.22);
+  const cornerCoords = [
+    [-2.24, -1.94],
+    [2.24, -1.94],
+    [-2.24, 1.94],
+    [2.24, 1.94],
   ];
-  corners.forEach(([x, y, z]) => {
-    const post = new THREE.Mesh(postGeo, woodMat);
-    post.position.set(x, y, z);
+  cornerCoords.forEach(([cx, cz]) => {
+    const post = new THREE.Mesh(cornerPostGeo, timberMat);
+    post.position.set(cx, 2.025, cz);
+    post.castShadow = true;
     cottage.add(post);
   });
 
-  // Roof Gable Panels (Angled Box halves)
-  const roofMat = new THREE.MeshStandardMaterial({
-    color: roofColor,
-    roughness: 0.8,
+  // Front Tudor framing: Door posts and diagonal cross-braces
+  const doorPostL = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.95, 0.12), timberMat);
+  doorPostL.position.set(-0.58, 1.68, 1.98);
+  cottage.add(doorPostL);
+
+  const doorPostR = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.95, 0.12), timberMat);
+  doorPostR.position.set(0.58, 1.68, 1.98);
+  cottage.add(doorPostR);
+
+  const doorLintel = new THREE.Mesh(new THREE.BoxGeometry(1.28, 0.14, 0.14), timberMat);
+  doorLintel.position.set(0, 2.68, 1.98);
+  cottage.add(doorLintel);
+
+  // Diagonal Tudor braces on front face
+  const diagGeo = new THREE.BoxGeometry(0.1, 1.15, 0.06);
+  const diagBraces = [
+    { x: -1.75, y: 2.62, rotZ: 0.55 },
+    { x: -1.75, y: 1.34, rotZ: -0.55 },
+    { x: 1.75, y: 2.62, rotZ: -0.55 },
+    { x: 1.75, y: 1.34, rotZ: 0.55 },
+  ];
+  diagBraces.forEach((b) => {
+    const brace = new THREE.Mesh(diagGeo, timberMat);
+    brace.position.set(b.x, b.y, 1.98);
+    brace.rotation.z = b.rotZ;
+    cottage.add(brace);
   });
-  const roofLeft = new THREE.Mesh(new THREE.BoxGeometry(2.9, 0.25, 4.6), roofMat);
-  roofLeft.position.set(-1.15, 3.9, 0);
-  roofLeft.rotation.z = Math.PI * 0.17;
+
+  // 4. Overhanging Pitched Gable Roof with Bargeboards & Finials
+  const roofGroup = new THREE.Group();
+  roofGroup.name = 'cottage_roof';
+
+  const pitchAngle = 0.58; // ~33.2 degrees
+  const roofSlabGeo = new THREE.BoxGeometry(2.96, 0.22, 4.75);
+
+  const roofLeft = new THREE.Mesh(roofSlabGeo, roofMat);
+  roofLeft.position.set(-1.18, 4.05, 0);
+  roofLeft.rotation.z = pitchAngle;
   roofLeft.castShadow = true;
-  cottage.add(roofLeft);
+  roofLeft.receiveShadow = true;
+  roofGroup.add(roofLeft);
 
-  const roofRight = new THREE.Mesh(new THREE.BoxGeometry(2.9, 0.25, 4.6), roofMat);
-  roofRight.position.set(1.15, 3.9, 0);
-  roofRight.rotation.z = -Math.PI * 0.17;
+  const roofRight = new THREE.Mesh(roofSlabGeo, roofMat);
+  roofRight.position.set(1.18, 4.05, 0);
+  roofRight.rotation.z = -pitchAngle;
   roofRight.castShadow = true;
-  cottage.add(roofRight);
+  roofRight.receiveShadow = true;
+  roofGroup.add(roofRight);
 
-  // Gable end triangles
-  const gableMat = new THREE.MeshStandardMaterial({ color: 0x4a2e18, roughness: 0.8 });
-  const gableFront = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 2.3, 1.5, 3), gableMat);
-  gableFront.position.set(0, 3.85, 2.0);
+  // Roof Ridge Cap Beam
+  const ridgeCap = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.24, 4.8), timberMat);
+  ridgeCap.position.set(0, 4.86, 0);
+  ridgeCap.rotation.z = Math.PI * 0.25;
+  ridgeCap.castShadow = true;
+  roofGroup.add(ridgeCap);
+
+  // Gable end walls (vertical timbered attic walls under roof)
+  const gableFront = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 2.3, 1.5, 3), timberMat);
+  gableFront.position.set(0, 4.05, 1.96);
   gableFront.rotation.y = Math.PI;
-  cottage.add(gableFront);
+  gableFront.castShadow = true;
+  roofGroup.add(gableFront);
 
-  const gableBack = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 2.3, 1.5, 3), gableMat);
-  gableBack.position.set(0, 3.85, -2.0);
-  cottage.add(gableBack);
+  const gableBack = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 2.3, 1.5, 3), timberMat);
+  gableBack.position.set(0, 4.05, -1.96);
+  gableBack.castShadow = true;
+  roofGroup.add(gableBack);
 
-  // Brick Chimney
-  const chimneyMat = new THREE.MeshStandardMaterial({ color: 0x7c3a2a, roughness: 0.9 });
-  const chimney = new THREE.Mesh(new THREE.BoxGeometry(0.7, 3.8, 0.7), chimneyMat);
-  chimney.position.set(1.6, 2.8, -1.2);
-  chimney.castShadow = true;
-  cottage.add(chimney);
+  // Carved wooden bargeboards along front & back gables
+  const bargeGeo = new THREE.BoxGeometry(2.98, 0.24, 0.08);
+  [-2.38, 2.38].forEach((bz) => {
+    const bargeL = new THREE.Mesh(bargeGeo, timberMat);
+    bargeL.position.set(-1.18, 4.05, bz);
+    bargeL.rotation.z = pitchAngle;
+    roofGroup.add(bargeL);
 
-  const chimneyCap = new THREE.Mesh(
-    new THREE.BoxGeometry(0.9, 0.15, 0.9),
-    new THREE.MeshStandardMaterial({ color: 0x3d4852, roughness: 0.8 })
-  );
-  chimneyCap.position.set(1.6, 4.75, -1.2);
-  cottage.add(chimneyCap);
+    const bargeR = new THREE.Mesh(bargeGeo, timberMat);
+    bargeR.position.set(1.18, 4.05, bz);
+    bargeR.rotation.z = -pitchAngle;
+    roofGroup.add(bargeR);
 
-  // Wooden Front Door
-  const door = new THREE.Mesh(new THREE.BoxGeometry(0.95, 1.9, 0.12), woodMat);
-  door.position.set(0, 0.95, 2.03);
-  cottage.add(door);
+    // Turned apex finial
+    const finial = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.08, 0.45, 6), timberMat);
+    finial.position.set(0, 5.08, bz);
+    roofGroup.add(finial);
+  });
 
-  // Front Windows with soft warm interior amber glow
-  const windowGlowMat = new THREE.MeshBasicMaterial({ color: 0xfcd34d });
-  const winFrameMat = new THREE.MeshStandardMaterial({ color: 0x3e2714, roughness: 0.7 });
+  cottage.add(roofGroup);
 
-  const win1 = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.7, 0.08), windowGlowMat);
-  win1.position.set(-1.3, 1.8, 2.02);
-  cottage.add(win1);
+  // 5. Roof Dormer Window with Pitch Roof
+  const dormerGroup = new THREE.Group();
+  dormerGroup.name = 'cottage_dormer';
+  dormerGroup.position.set(1.22, 4.22, 0.45);
 
-  const win1Frame = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.8, 0.12), winFrameMat);
-  win1Frame.position.set(-1.3, 1.8, 2.0);
-  cottage.add(win1Frame);
+  const dormerWalls = new THREE.Mesh(new THREE.BoxGeometry(0.82, 0.72, 1.05), wallMat);
+  dormerGroup.add(dormerWalls);
 
-  const win2 = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.7, 0.08), windowGlowMat);
-  win2.position.set(1.3, 1.8, 2.02);
-  cottage.add(win2);
+  const dormerRoofL = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.08, 1.15), roofMat);
+  dormerRoofL.position.set(-0.22, 0.46, 0);
+  dormerRoofL.rotation.z = 0.55;
+  dormerGroup.add(dormerRoofL);
 
-  const win2Frame = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.8, 0.12), winFrameMat);
-  win2Frame.position.set(1.3, 1.8, 2.0);
-  cottage.add(win2Frame);
+  const dormerRoofR = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.08, 1.15), roofMat);
+  dormerRoofR.position.set(0.22, 0.46, 0);
+  dormerRoofR.rotation.z = -0.55;
+  dormerGroup.add(dormerRoofR);
+
+  const dormerWinPane = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.48, 0.04), windowGlowMat);
+  dormerWinPane.position.set(0, 0.02, 0.54);
+  dormerGroup.add(dormerWinPane);
+
+  const dormerFrame = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.56, 0.06), windowFrameMat);
+  dormerFrame.position.set(0, 0.02, 0.53);
+  dormerGroup.add(dormerFrame);
+
+  cottage.add(dormerGroup);
+
+  // 6. Stepped Stone Chimney with Cylindrical Terra-Cotta Pot
+  const chimneyGroup = new THREE.Group();
+  chimneyGroup.name = 'cottage_chimney';
+  chimneyGroup.position.set(1.72, 0, -1.15);
+
+  // Lower chimney stack
+  const chimLower = new THREE.Mesh(new THREE.BoxGeometry(0.95, 2.6, 0.95), chimneyMat);
+  chimLower.position.y = 1.3;
+  chimLower.castShadow = true;
+  chimneyGroup.add(chimLower);
+
+  // Mid stepped tier
+  const chimMid = new THREE.Mesh(new THREE.BoxGeometry(0.82, 2.4, 0.82), chimneyMat);
+  chimMid.position.y = 3.4;
+  chimMid.castShadow = true;
+  chimneyGroup.add(chimMid);
+
+  // Upper stack piercing roof
+  const chimUpper = new THREE.Mesh(new THREE.BoxGeometry(0.72, 1.8, 0.72), chimneyMat);
+  chimUpper.position.y = 5.1;
+  chimUpper.castShadow = true;
+  chimneyGroup.add(chimUpper);
+
+  // Chimney cornice cap
+  const chimCap = new THREE.Mesh(new THREE.BoxGeometry(0.92, 0.14, 0.92), stoneMat);
+  chimCap.position.y = 6.05;
+  chimneyGroup.add(chimCap);
+
+  // Cylindrical terra-cotta chimney pot
+  const chimPot = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, 0.55, 8), chimneyPotMat);
+  chimPot.position.y = 6.38;
+  chimPot.castShadow = true;
+  chimneyGroup.add(chimPot);
+
+  const chimPotRim = new THREE.Mesh(new THREE.TorusGeometry(0.18, 0.03, 6, 8), chimneyPotMat);
+  chimPotRim.position.y = 6.65;
+  chimPotRim.rotation.x = Math.PI * 0.5;
+  chimneyGroup.add(chimPotRim);
+
+  cottage.add(chimneyGroup);
+
+  // 7. Detailed Front Door & Entrance Porch Awning
+  const doorGroup = new THREE.Group();
+  doorGroup.name = 'cottage_door';
+  doorGroup.position.set(0, 0, 1.98);
+
+  const doorLeaf = new THREE.Mesh(new THREE.BoxGeometry(0.96, 1.92, 0.12), doorWoodMat);
+  doorLeaf.position.y = 1.62;
+  doorLeaf.castShadow = true;
+  doorGroup.add(doorLeaf);
+
+  // Wrought iron strap hinges
+  const hingeUpper = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.05, 0.14), ironMat);
+  hingeUpper.position.set(0.08, 2.15, 0);
+  doorGroup.add(hingeUpper);
+
+  const hingeLower = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.05, 0.14), ironMat);
+  hingeLower.position.set(0.08, 1.05, 0);
+  doorGroup.add(hingeLower);
+
+  // Iron ring door pull
+  const ringHandle = new THREE.Mesh(new THREE.TorusGeometry(0.06, 0.015, 6, 8), ironMat);
+  ringHandle.position.set(0.32, 1.58, 0.08);
+  doorGroup.add(ringHandle);
+
+  // Pitched wood entrance canopy awning over door
+  const awningL = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.08, 0.65), timberMat);
+  awningL.position.set(-0.32, 2.85, 0.32);
+  awningL.rotation.z = 0.35;
+  doorGroup.add(awningL);
+
+  const awningR = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.08, 0.65), timberMat);
+  awningR.position.set(0.32, 2.85, 0.32);
+  awningR.rotation.z = -0.35;
+  doorGroup.add(awningR);
+
+  // Awning diagonal support brackets
+  const bracketL = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.45, 0.08), timberMat);
+  bracketL.position.set(-0.55, 2.65, 0.18);
+  bracketL.rotation.x = -0.6;
+  doorGroup.add(bracketL);
+
+  const bracketR = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.45, 0.08), timberMat);
+  bracketR.position.set(0.55, 2.65, 0.18);
+  bracketR.rotation.x = -0.6;
+  doorGroup.add(bracketR);
+
+  cottage.add(doorGroup);
+
+  // 8. Leaded Glass Windows with Flower Planter Boxes
+  const addWindowWithPlanter = (xPos: number) => {
+    const winGroup = new THREE.Group();
+    winGroup.position.set(xPos, 1.85, 1.98);
+
+    // Warm amber glowing pane
+    const pane = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.72, 0.05), windowGlowMat);
+    winGroup.add(pane);
+
+    // Frame casing
+    const frame = new THREE.Mesh(new THREE.BoxGeometry(0.86, 0.86, 0.1), windowFrameMat);
+    winGroup.add(frame);
+
+    // Cross muntins
+    const muntinV = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.72, 0.07), windowFrameMat);
+    winGroup.add(muntinV);
+    const muntinH = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.05, 0.07), windowFrameMat);
+    winGroup.add(muntinH);
+
+    // Wooden flower planter box below window
+    const box = new THREE.Mesh(new THREE.BoxGeometry(0.92, 0.22, 0.32), timberMat);
+    box.position.set(0, -0.56, 0.14);
+    winGroup.add(box);
+
+    // Planter soil & foliage
+    const plantBase = new THREE.Mesh(new THREE.BoxGeometry(0.86, 0.12, 0.28), foliageMat);
+    plantBase.position.set(0, -0.46, 0.14);
+    winGroup.add(plantBase);
+
+    // Colorful blooming blossoms
+    const flowers = [
+      { x: -0.28, z: 0.12, mat: flowerLavenderMat },
+      { x: -0.08, z: 0.18, mat: flowerGoldMat },
+      { x: 0.12, z: 0.1, mat: flowerPinkMat },
+      { x: 0.3, z: 0.16, mat: flowerLavenderMat },
+    ];
+    flowers.forEach((f) => {
+      const bloom = new THREE.Mesh(new THREE.SphereGeometry(0.06, 6, 5), f.mat);
+      bloom.position.set(f.x, -0.38, f.z);
+      winGroup.add(bloom);
+    });
+
+    cottage.add(winGroup);
+  };
+
+  addWindowWithPlanter(-1.32);
+  addWindowWithPlanter(1.32);
+
+  // 9. Variant-Specific Personality & Exterior Props
+  const variantPropGroup = new THREE.Group();
+  variantPropGroup.name = 'cottage_variant_prop';
+
+  if (variant === 0) {
+    // Variant 0 (Blacksmith Forge Cottage): Side lean-to shelter with stacked firewood & iron crate
+    const leanToGroup = new THREE.Group();
+    leanToGroup.position.set(-2.65, 0, 0);
+
+    // 2 Lean-to wooden posts
+    const postA = new THREE.Mesh(new THREE.BoxGeometry(0.14, 2.3, 0.14), timberMat);
+    postA.position.set(-0.7, 1.15, -0.9);
+    leanToGroup.add(postA);
+
+    const postB = new THREE.Mesh(new THREE.BoxGeometry(0.14, 2.3, 0.14), timberMat);
+    postB.position.set(-0.7, 1.15, 0.9);
+    leanToGroup.add(postB);
+
+    // Pitched shed roof slab
+    const shedRoof = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.1, 2.4), roofMat);
+    shedRoof.position.set(-0.35, 2.2, 0);
+    shedRoof.rotation.z = -0.32;
+    shedRoof.castShadow = true;
+    leanToGroup.add(shedRoof);
+
+    // Stacked cordwood logs
+    const logGeo = new THREE.CylinderGeometry(0.09, 0.09, 1.8, 6);
+    const logMat = new THREE.MeshStandardMaterial({ color: 0x5c3a21, roughness: 0.85 });
+    for (let r = 0; r < 2; r++) {
+      for (let c = 0; c < 3; c++) {
+        const log = new THREE.Mesh(logGeo, logMat);
+        log.position.set(-0.55 + c * 0.16, 0.12 + r * 0.18, 0);
+        log.rotation.x = Math.PI * 0.5;
+        leanToGroup.add(log);
+      }
+    }
+
+    // Iron supply crate
+    const crate = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.55, 0.55), timberMat);
+    crate.position.set(-0.35, 0.28, -0.6);
+    leanToGroup.add(crate);
+
+    variantPropGroup.add(leanToGroup);
+  } else if (variant === 1) {
+    // Variant 1 (Lyra's Apothecary Cottage): Braided hanging drying herb bundles under porch eave
+    const herbGroup = new THREE.Group();
+    herbGroup.position.set(0, 2.65, 2.15);
+
+    const herbMats = [
+      new THREE.MeshStandardMaterial({ color: 0x4d7c0f, roughness: 0.8 }),
+      new THREE.MeshStandardMaterial({ color: 0x84a46a, roughness: 0.85 }),
+      new THREE.MeshStandardMaterial({ color: 0x7c3aed, roughness: 0.7 }),
+    ];
+    const herbOffsets = [-0.35, 0, 0.35];
+    herbOffsets.forEach((hx, idx) => {
+      // Twine hanger
+      const twine = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 0.01, 0.16, 4), timberMat);
+      twine.position.set(hx, -0.08, 0);
+      herbGroup.add(twine);
+
+      // Inverted herb bundle cone
+      const bundle = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.32, 6), herbMats[idx]);
+      bundle.position.set(hx, -0.26, 0);
+      herbGroup.add(bundle);
+    });
+
+    variantPropGroup.add(herbGroup);
+  } else if (variant === 2) {
+    // Variant 2 (The Wayfarer Tavern & Inn): Wrought iron sign bracket with swinging carved sign & oak ale casks
+    const tavernGroup = new THREE.Group();
+
+    // Wrought iron scrollwork sign bracket
+    const bracketArm = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.95), ironMat);
+    bracketArm.position.set(0.85, 2.92, 2.45);
+    tavernGroup.add(bracketArm);
+
+    const bracketSupport = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.52, 0.05), ironMat);
+    bracketSupport.position.set(0.85, 2.68, 2.3);
+    bracketSupport.rotation.x = -0.7;
+    tavernGroup.add(bracketSupport);
+
+    // Carved tavern signboard
+    const signBoard = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.52, 0.65), timberMat);
+    signBoard.position.set(0.85, 2.58, 2.65);
+    tavernGroup.add(signBoard);
+
+    // Hanging warm lantern
+    const lanternMat = new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.4, metalness: 0.7 });
+    const lantern = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.11, 0.22, 6), lanternMat);
+    lantern.position.set(-0.75, 2.35, 2.05);
+    tavernGroup.add(lantern);
+
+    // 2 Stacked oak ale casks beside entrance
+    const barrelMat = new THREE.MeshStandardMaterial({ color: 0x5a341b, roughness: 0.75 });
+    const barrelA = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.24, 0.58, 8), barrelMat);
+    barrelA.position.set(-0.95, 0.29, 2.15);
+    tavernGroup.add(barrelA);
+
+    const barrelB = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.52, 8), barrelMat);
+    barrelB.position.set(-0.95, 0.78, 2.15);
+    barrelB.rotation.z = Math.PI * 0.5;
+    tavernGroup.add(barrelB);
+
+    variantPropGroup.add(tavernGroup);
+  } else {
+    // Variant 3 (Valley Farm Cottage): Gable loft hay-hoist crane beam with pulley wheel and cordwood pile
+    const farmGroup = new THREE.Group();
+
+    // Crane hoist beam protruding from gable peak
+    const craneBeam = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.16, 1.25), timberMat);
+    craneBeam.position.set(0, 4.88, 2.55);
+    farmGroup.add(craneBeam);
+
+    // Pulley wheel ring
+    const pulley = new THREE.Mesh(new THREE.TorusGeometry(0.12, 0.025, 6, 10), ironMat);
+    pulley.position.set(0, 4.75, 3.05);
+    farmGroup.add(pulley);
+
+    // Hanging hemp hoist rope
+    const rope = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 1.4, 4), timberMat);
+    rope.position.set(0, 4.05, 3.05);
+    farmGroup.add(rope);
+
+    // Stacked cordwood firewood pile along right foundation
+    const woodpile = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.65, 1.6), timberMat);
+    woodpile.position.set(2.45, 0.35, 0);
+    farmGroup.add(woodpile);
+
+    variantPropGroup.add(farmGroup);
+  }
+
+  cottage.add(variantPropGroup);
 
   return cottage;
 }
@@ -3000,6 +3421,465 @@ export function createLyraHerbalist(): { group: THREE.Group; update: (dt: number
   };
 }
 
+export function createEldrinScout(): { group: THREE.Group; update: (dt: number) => void } {
+  const group = new THREE.Group();
+  group.name = 'eldrin_root';
+
+  // --- Palette & Stylized Materials ---
+  const skinMat = new THREE.MeshStandardMaterial({ color: 0xefb892, roughness: 0.72 });
+  const eyeGreenMat = new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.3 });
+  const pupilMat = new THREE.MeshBasicMaterial({ color: 0x0f172a });
+  const eyeShineMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+  const browMat = new THREE.MeshStandardMaterial({ color: 0x3e2714, roughness: 0.8 });
+  const hairMat = new THREE.MeshStandardMaterial({ color: 0x442818, roughness: 0.8 });
+
+  const leatherJacketMat = new THREE.MeshStandardMaterial({ color: 0x6b3f20, roughness: 0.75 });
+  const underTunicMat = new THREE.MeshStandardMaterial({ color: 0x2e4a38, roughness: 0.8 });
+  const cowlMat = new THREE.MeshStandardMaterial({
+    color: 0x1b3c29,
+    roughness: 0.82,
+    side: THREE.DoubleSide,
+  });
+  const cloakMat = new THREE.MeshStandardMaterial({
+    color: 0x183424,
+    roughness: 0.85,
+    side: THREE.DoubleSide,
+  });
+  const pantsMat = new THREE.MeshStandardMaterial({ color: 0x3d433b, roughness: 0.85 });
+  const bootMat = new THREE.MeshStandardMaterial({ color: 0x2c1a0e, roughness: 0.65 });
+  const bracerMat = new THREE.MeshStandardMaterial({ color: 0x482b15, roughness: 0.68 });
+  const brassMat = new THREE.MeshStandardMaterial({
+    color: 0xd4af37,
+    metalness: 0.8,
+    roughness: 0.3,
+  });
+  const bowWoodMat = new THREE.MeshStandardMaterial({ color: 0x8a5229, roughness: 0.65 });
+  const bowGripMat = new THREE.MeshStandardMaterial({ color: 0x24160c, roughness: 0.8 });
+  const stringMat = new THREE.MeshBasicMaterial({ color: 0xe2e8f0 });
+  const quiverMat = new THREE.MeshStandardMaterial({ color: 0x542c13, roughness: 0.75 });
+  const arrowShaftMat = new THREE.MeshStandardMaterial({ color: 0xb5814c, roughness: 0.7 });
+  const fletchGreenMat = new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.6 });
+  const fletchRedMat = new THREE.MeshStandardMaterial({ color: 0x991b1b, roughness: 0.6 });
+
+  // 1. Legs & Grounded Boots (Flush with ground y = 0)
+  const legsGroup = new THREE.Group();
+  legsGroup.name = 'eldrin_legs';
+
+  [-0.14, 0.14].forEach((lx) => {
+    // Upper thigh in ranger trousers
+    const thigh = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.44, 0.18), pantsMat);
+    thigh.position.set(lx, 0.58, 0);
+    thigh.castShadow = true;
+    legsGroup.add(thigh);
+
+    // Boot shaft
+    const bootShaft = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.38, 0.2), bootMat);
+    bootShaft.position.set(lx, 0.22, 0);
+    bootShaft.castShadow = true;
+    legsGroup.add(bootShaft);
+
+    // Folded turn-down boot cuff rim
+    const bootCuff = new THREE.Mesh(new THREE.BoxGeometry(0.23, 0.11, 0.23), bootMat);
+    bootCuff.position.set(lx, 0.38, 0);
+    legsGroup.add(bootCuff);
+
+    // Ankle strap & brass buckle
+    const strap = new THREE.Mesh(new THREE.BoxGeometry(0.21, 0.04, 0.21), leatherJacketMat);
+    strap.position.set(lx, 0.16, 0);
+    legsGroup.add(strap);
+
+    const ankleBuckle = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.05, 0.02), brassMat);
+    ankleBuckle.position.set(lx + (lx > 0 ? 0.11 : -0.11), 0.16, 0);
+    legsGroup.add(ankleBuckle);
+
+    // Foot sole (Sitting flush on ground, base at y = 0)
+    const foot = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.14, 0.3), bootMat);
+    foot.position.set(lx, 0.07, 0.05);
+    foot.receiveShadow = true;
+    legsGroup.add(foot);
+  });
+  group.add(legsGroup);
+
+  // 2. Torso with Leather Brigandine & Cross-body Quiver Strap
+  const torsoGroup = new THREE.Group();
+  torsoGroup.name = 'eldrin_torso';
+  torsoGroup.position.set(0, 0.8, 0);
+
+  // Under-tunic skirt base
+  const tunicSkirt = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.24, 0.32), underTunicMat);
+  tunicSkirt.position.y = 0.08;
+  torsoGroup.add(tunicSkirt);
+
+  // Upper chest & brigandine jerkin
+  const chest = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.54, 0.34), leatherJacketMat);
+  chest.position.y = 0.38;
+  chest.castShadow = true;
+  torsoGroup.add(chest);
+
+  // Waist belt & brass buckle
+  const belt = new THREE.Mesh(new THREE.BoxGeometry(0.54, 0.09, 0.36), bootMat);
+  belt.position.y = 0.15;
+  torsoGroup.add(belt);
+
+  const buckle = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.11, 0.38), brassMat);
+  buckle.position.y = 0.15;
+  torsoGroup.add(buckle);
+
+  // Hip pouch on right side
+  const hipPouch = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.14, 0.14), leatherJacketMat);
+  hipPouch.position.set(0.26, 0.12, 0.06);
+  torsoGroup.add(hipPouch);
+
+  // Sheathed hunting dagger on right hip
+  const daggerSheath = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.28, 0.08), bootMat);
+  daggerSheath.position.set(0.28, 0.1, 0.08);
+  daggerSheath.rotation.z = -0.22;
+  torsoGroup.add(daggerSheath);
+
+  const daggerGuard = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.03, 0.04), brassMat);
+  daggerGuard.position.set(0.31, 0.25, 0.08);
+  daggerGuard.rotation.z = -0.22;
+  torsoGroup.add(daggerGuard);
+
+  const daggerPommel = new THREE.Mesh(new THREE.SphereGeometry(0.025, 6, 6), brassMat);
+  daggerPommel.position.set(0.33, 0.32, 0.08);
+  torsoGroup.add(daggerPommel);
+
+  // Cross-body quiver strap
+  const strapChest = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.62, 0.36), bootMat);
+  strapChest.position.set(0, 0.4, 0);
+  strapChest.rotation.z = 0.48;
+  torsoGroup.add(strapChest);
+
+  const strapBuckle = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.07, 0.38), brassMat);
+  strapBuckle.position.set(0.06, 0.45, 0);
+  strapBuckle.rotation.z = 0.48;
+  torsoGroup.add(strapBuckle);
+
+  group.add(torsoGroup);
+
+  // 3. Arrow Quiver mounted on Back
+  const quiverGroup = new THREE.Group();
+  quiverGroup.name = 'eldrin_quiver';
+  quiverGroup.position.set(0.12, 1.25, -0.22);
+  quiverGroup.rotation.z = -0.42;
+  quiverGroup.rotation.x = 0.15;
+
+  // Quiver cylinder body
+  const quiverBody = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.065, 0.62, 10), quiverMat);
+  quiverBody.castShadow = true;
+  quiverGroup.add(quiverBody);
+
+  // Brass reinforced collar rim
+  const quiverRim = new THREE.Mesh(new THREE.TorusGeometry(0.085, 0.012, 6, 12), brassMat);
+  quiverRim.position.y = 0.31;
+  quiverRim.rotation.x = Math.PI * 0.5;
+  quiverGroup.add(quiverRim);
+
+  // 4 Protruding arrows with fletched vanes
+  const arrowAngles = [-0.12, -0.04, 0.05, 0.14];
+  arrowAngles.forEach((ang, idx) => {
+    const arrowShaft = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.32, 6), arrowShaftMat);
+    arrowShaft.position.set(ang * 0.4, 0.42, (idx % 2 === 0 ? 0.02 : -0.02));
+    arrowShaft.rotation.z = ang;
+    quiverGroup.add(arrowShaft);
+
+    // 3 Fletching feather vanes at 120-degree offsets
+    const fletchMat = idx % 2 === 0 ? fletchGreenMat : fletchRedMat;
+    for (let f = 0; f < 3; f++) {
+      const vane = new THREE.Mesh(new THREE.BoxGeometry(0.002, 0.08, 0.028), fletchMat);
+      vane.position.set(ang * 0.4, 0.5, (idx % 2 === 0 ? 0.02 : -0.02));
+      vane.rotation.y = (f * Math.PI * 2) / 3;
+      quiverGroup.add(vane);
+    }
+  });
+
+  group.add(quiverGroup);
+
+  // 4. Cloak draped down the back
+  const cloakGroup = new THREE.Group();
+  cloakGroup.name = 'eldrin_cloak';
+  cloakGroup.position.set(0, 1.45, -0.18);
+
+  const cloakMantle = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.86, 0.06), cloakMat);
+  cloakMantle.position.y = -0.42;
+  cloakMantle.rotation.x = 0.06;
+  cloakMantle.castShadow = true;
+  cloakGroup.add(cloakMantle);
+
+  group.add(cloakGroup);
+
+  // 5. Articulated Head & Hooded Ranger Cowl
+  const headGroup = new THREE.Group();
+  headGroup.name = 'eldrin_head';
+  headGroup.position.set(0, 1.48, 0);
+
+  // Neck
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.1, 0.14, 8), skinMat);
+  neck.position.y = 0.02;
+  headGroup.add(neck);
+
+  // Head cranium
+  const headMesh = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.32, 0.3), skinMat);
+  headMesh.position.set(0, 0.18, 0.02);
+  headMesh.castShadow = true;
+  headGroup.add(headMesh);
+
+  // Expressive cel-shaded ranger face
+  // Left eye
+  const eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.035, 0.02), eyeGreenMat);
+  eyeL.position.set(-0.075, 0.19, 0.175);
+  headGroup.add(eyeL);
+
+  const pupilL = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.025, 0.022), pupilMat);
+  pupilL.position.set(-0.075, 0.19, 0.177);
+  headGroup.add(pupilL);
+
+  const shineL = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.01, 0.024), eyeShineMat);
+  shineL.position.set(-0.068, 0.2, 0.179);
+  headGroup.add(shineL);
+
+  // Right eye
+  const eyeR = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.035, 0.02), eyeGreenMat);
+  eyeR.position.set(0.075, 0.19, 0.175);
+  headGroup.add(eyeR);
+
+  const pupilR = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.025, 0.022), pupilMat);
+  pupilR.position.set(0.075, 0.19, 0.177);
+  headGroup.add(pupilR);
+
+  const shineR = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.01, 0.024), eyeShineMat);
+  shineR.position.set(0.082, 0.2, 0.179);
+  headGroup.add(shineR);
+
+  // Arched eyebrows
+  const browL = new THREE.Mesh(new THREE.BoxGeometry(0.065, 0.016, 0.02), browMat);
+  browL.position.set(-0.075, 0.225, 0.176);
+  browL.rotation.z = 0.1;
+  headGroup.add(browL);
+
+  const browR = new THREE.Mesh(new THREE.BoxGeometry(0.065, 0.016, 0.02), browMat);
+  browR.position.set(0.075, 0.225, 0.176);
+  browR.rotation.z = -0.1;
+  headGroup.add(browR);
+
+  // Nose bridge
+  const nose = new THREE.Mesh(new THREE.ConeGeometry(0.028, 0.07, 4), skinMat);
+  nose.position.set(0, 0.155, 0.185);
+  nose.rotation.x = Math.PI * 0.15;
+  headGroup.add(nose);
+
+  // Smile / mouth line
+  const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.012, 0.015), browMat);
+  mouth.position.set(0.01, 0.095, 0.175);
+  mouth.rotation.z = 0.05;
+  headGroup.add(mouth);
+
+  // Hair locks peeking from cowl
+  const hairL = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.16, 0.08), hairMat);
+  hairL.position.set(-0.16, 0.15, 0.11);
+  headGroup.add(hairL);
+
+  const hairR = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.16, 0.08), hairMat);
+  hairR.position.set(0.16, 0.15, 0.11);
+  headGroup.add(hairR);
+
+  // Hooded Ranger Cowl (Framing head and face)
+  const cowlGroup = new THREE.Group();
+  cowlGroup.name = 'eldrin_cowl';
+
+  // Hood enclosure
+  const hoodTop = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.16, 0.36), cowlMat);
+  hoodTop.position.set(0, 0.34, 0.02);
+  cowlGroup.add(hoodTop);
+
+  const hoodBack = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.34, 0.12), cowlMat);
+  hoodBack.position.set(0, 0.2, -0.12);
+  cowlGroup.add(hoodBack);
+
+  const hoodSideL = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.32, 0.28), cowlMat);
+  hoodSideL.position.set(-0.16, 0.21, 0.04);
+  cowlGroup.add(hoodSideL);
+
+  const hoodSideR = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.32, 0.28), cowlMat);
+  hoodSideR.position.set(0.16, 0.21, 0.04);
+  cowlGroup.add(hoodSideR);
+
+  // Rear hood tail / fold
+  const hoodPoint = new THREE.Mesh(new THREE.ConeGeometry(0.11, 0.22, 5), cowlMat);
+  hoodPoint.position.set(0, 0.26, -0.22);
+  hoodPoint.rotation.x = -0.7;
+  cowlGroup.add(hoodPoint);
+
+  // Draped shoulder mantle
+  const mantle = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.38, 0.16, 8), cowlMat);
+  mantle.position.y = -0.01;
+  cowlGroup.add(mantle);
+
+  // Embossed golden leaf pin clasp at throat
+  const leafPin = new THREE.Mesh(new THREE.ConeGeometry(0.038, 0.085, 3), brassMat);
+  leafPin.position.set(0, 0.04, 0.21);
+  leafPin.rotation.x = Math.PI * 0.5;
+  leafPin.rotation.z = Math.PI;
+  cowlGroup.add(leafPin);
+
+  headGroup.add(cowlGroup);
+  group.add(headGroup);
+
+  // 6. Recurve Hunting Longbow (Smooth curved stave + bowstring + leather grip)
+  const bowGroup = new THREE.Group();
+  bowGroup.name = 'eldrin_bow';
+
+  // Catmull-Rom curved recurve stave
+  const bowPoints = [
+    new THREE.Vector3(0, 0.68, 0.07),
+    new THREE.Vector3(0, 0.46, -0.05),
+    new THREE.Vector3(0, 0.18, -0.02),
+    new THREE.Vector3(0, 0.0, 0.0),
+    new THREE.Vector3(0, -0.18, -0.02),
+    new THREE.Vector3(0, -0.46, -0.05),
+    new THREE.Vector3(0, -0.68, 0.07),
+  ];
+  const bowCurve = new THREE.CatmullRomCurve3(bowPoints);
+  const bowStave = new THREE.Mesh(new THREE.TubeGeometry(bowCurve, 20, 0.018, 8, false), bowWoodMat);
+  bowStave.castShadow = true;
+  bowGroup.add(bowStave);
+
+  // Leather wrapped grip at center
+  const bowGrip = new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.024, 0.15, 8), bowGripMat);
+  bowGroup.add(bowGrip);
+
+  // Brass accent rings on grip ends
+  [-0.075, 0.075].forEach((gy) => {
+    const gripRing = new THREE.Mesh(new THREE.TorusGeometry(0.025, 0.005, 6, 8), brassMat);
+    gripRing.position.y = gy;
+    gripRing.rotation.x = Math.PI * 0.5;
+    bowGroup.add(gripRing);
+  });
+
+  // Bowstring spanning from upper tip to lower tip
+  const stringGeo = new THREE.CylinderGeometry(0.003, 0.003, 1.36, 4);
+  const bowstring = new THREE.Mesh(stringGeo, stringMat);
+  bowstring.position.set(0, 0, 0.07);
+  bowGroup.add(bowstring);
+
+  // Horn string nocks at stave tips
+  [-0.68, 0.68].forEach((ny) => {
+    const nock = new THREE.Mesh(new THREE.SphereGeometry(0.022, 6, 6), brassMat);
+    nock.position.set(0, ny, 0.07);
+    bowGroup.add(nock);
+  });
+
+  // 7. Left Arm holding the Recurve Longbow
+  const leftArmGroup = new THREE.Group();
+  leftArmGroup.name = 'eldrin_left_arm';
+  leftArmGroup.position.set(-0.32, 1.35, 0);
+
+  // Shoulder sleeve
+  const sleeveL = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.14, 0.14), underTunicMat);
+  leftArmGroup.add(sleeveL);
+
+  // Upper bicep
+  const bicepL = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.06, 0.28, 8), underTunicMat);
+  bicepL.position.set(-0.04, -0.14, 0.04);
+  bicepL.rotation.set(0.3, 0, -0.2);
+  leftArmGroup.add(bicepL);
+
+  // Forearm with archer's laced armguard bracer
+  const forearmL = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.06, 0.28, 8), bracerMat);
+  forearmL.position.set(-0.06, -0.34, 0.16);
+  forearmL.rotation.set(0.85, 0.3, -0.2);
+  leftArmGroup.add(forearmL);
+
+  // Hand clutching the bow grip
+  const handL = new THREE.Mesh(new THREE.SphereGeometry(0.055, 6, 6), skinMat);
+  handL.position.set(-0.06, -0.46, 0.28);
+  leftArmGroup.add(handL);
+
+  // Mount bow in left hand
+  bowGroup.position.set(-0.06, -0.46, 0.28);
+  bowGroup.rotation.set(0.4, -0.3, 0.25);
+  leftArmGroup.add(bowGroup);
+
+  group.add(leftArmGroup);
+
+  // 8. Right Arm resting alertly on hip / quiver harness
+  const rightArmGroup = new THREE.Group();
+  rightArmGroup.name = 'eldrin_right_arm';
+  rightArmGroup.position.set(0.32, 1.35, 0);
+
+  const sleeveR = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.14, 0.14), underTunicMat);
+  rightArmGroup.add(sleeveR);
+
+  const bicepR = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.06, 0.28, 8), underTunicMat);
+  bicepR.position.set(0.04, -0.14, 0);
+  bicepR.rotation.set(-0.1, 0, 0.2);
+  rightArmGroup.add(bicepR);
+
+  const forearmR = new THREE.Mesh(new THREE.CylinderGeometry(0.068, 0.06, 0.26, 8), bracerMat);
+  forearmR.position.set(0.06, -0.32, 0.06);
+  forearmR.rotation.set(0.45, -0.2, 0.3);
+  rightArmGroup.add(forearmR);
+
+  const handR = new THREE.Mesh(new THREE.SphereGeometry(0.055, 6, 6), skinMat);
+  handR.position.set(0.08, -0.44, 0.14);
+  rightArmGroup.add(handR);
+
+  group.add(rightArmGroup);
+
+  // --- Animation & Horizon Scanning Update Loop ---
+  let time = Math.random() * 10.0;
+
+  return {
+    group,
+    update: (dt: number) => {
+      // Safe delta time accumulation (hostile dt resilience)
+      const safeDt = Number.isFinite(dt) && dt > 0 ? Math.min(dt, 0.2) : 0.016;
+      time += safeDt;
+
+      // Natural breathing sway
+      const breath = Math.sin(time * 1.8);
+      torsoGroup.position.y = 0.8 + breath * 0.012;
+      torsoGroup.rotation.x = breath * 0.008;
+
+      // Cloak breeze flutter
+      cloakGroup.rotation.x = 0.06 + Math.sin(time * 2.2) * 0.025;
+      quiverGroup.rotation.z = -0.42 + Math.sin(time * 1.8) * 0.015;
+
+      // Bow arm stabilization against breath
+      leftArmGroup.rotation.x = -breath * 0.01;
+
+      // Frontier Horizon Scouting Scan (8-second loop)
+      const scanPhase = (time * 0.8) % 8.0;
+      let targetHeadPan = 0;
+      let targetHeadTilt = Math.sin(time * 1.4) * 0.02;
+
+      if (scanPhase > 2.0 && scanPhase <= 4.0) {
+        // Smoothly scan left trailhead
+        const progress = Math.min(1.0, (scanPhase - 2.0) * 1.5);
+        targetHeadPan = -0.38 * Math.sin(progress * Math.PI * 0.5);
+        targetHeadTilt = -0.04;
+      } else if (scanPhase > 4.0 && scanPhase <= 5.0) {
+        // Smoothly sweep back across center
+        const progress = (scanPhase - 4.0);
+        targetHeadPan = -0.38 * (1.0 - progress);
+      } else if (scanPhase > 5.0 && scanPhase <= 7.0) {
+        // Smoothly scan right valley ridge
+        const progress = Math.min(1.0, (scanPhase - 5.0) * 1.5);
+        targetHeadPan = 0.35 * Math.sin(progress * Math.PI * 0.5);
+        targetHeadTilt = 0.03;
+      } else if (scanPhase > 7.0) {
+        // Return to center
+        const progress = (scanPhase - 7.0);
+        targetHeadPan = 0.35 * (1.0 - progress);
+      }
+
+      headGroup.rotation.y = targetHeadPan;
+      headGroup.rotation.z = targetHeadTilt;
+    },
+  };
+}
+
 export function createTownsperson(
   role: 'blacksmith' | 'herbalist' | 'scout'
 ): { group: THREE.Group; update: (dt: number) => void } {
@@ -3009,47 +3889,11 @@ export function createTownsperson(
   if (role === 'herbalist') {
     return createLyraHerbalist();
   }
-
-  const group = new THREE.Group();
-
-  const skinMat = new THREE.MeshStandardMaterial({ color: 0xf1c29b, roughness: 0.8 });
-
-  {
-    // Eldrin the Scout
-    const leatherMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.8 });
-    const cloakMat = new THREE.MeshStandardMaterial({ color: 0x14532d, roughness: 0.75 });
-
-    // Tunic
-    const tunic = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.75, 0.35), leatherMat);
-    tunic.position.y = 1.0;
-    tunic.castShadow = true;
-    group.add(tunic);
-
-    // Cloak
-    const cloak = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.9, 0.1), cloakMat);
-    cloak.position.set(0, 0.9, -0.2);
-    group.add(cloak);
-
-    // Head
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.19, 8, 8), skinMat);
-    head.position.y = 1.52;
-    group.add(head);
-
-    // Traveler staff
-    const staffMat = new THREE.MeshStandardMaterial({ color: 0x3f2e1a, roughness: 0.8 });
-    const staff = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 1.8, 6), staffMat);
-    staff.position.set(0.35, 0.9, 0.25);
-    group.add(staff);
+  if (role === 'scout') {
+    return createEldrinScout();
   }
 
-  let time = Math.random() * 5.0;
-  return {
-    group,
-    update: (dt: number) => {
-      time += dt;
-      group.position.y = Math.sin(time * 2.0) * 0.02;
-    },
-  };
+  return createEldrinScout();
 }
 
 export interface VillageObstacle {

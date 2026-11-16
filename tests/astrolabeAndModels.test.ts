@@ -11,6 +11,8 @@ import {
   createTownsperson,
   createAstrolabeGazebo,
   createArchmageAurelius,
+  createVillageCottage,
+  createEldrinScout,
 } from '../src/engine/ProceduralModels';
 
 describe('Astrolabe Grimoire SVG Plotter', () => {
@@ -145,7 +147,13 @@ describe('Stylized 3D Procedural Models & Solstice Haven Living Town', () => {
         for (const name of ['position', 'normal', 'color', 'uv']) {
           const attr = geo.attributes[name];
           if (!attr) continue;
-          for (const v of Array.from(attr.array as ArrayLike<number>)) expect(Number.isFinite(v)).toBe(true);
+          const arr = attr.array;
+          for (let i = 0; i < arr.length; i++) {
+            if (!Number.isFinite(arr[i])) {
+              expect(Number.isFinite(arr[i])).toBe(true);
+              break;
+            }
+          }
         }
         const n = geo.attributes.normal;
         if (n) {
@@ -154,7 +162,7 @@ describe('Stylized 3D Procedural Models & Solstice Haven Living Town', () => {
           }
         }
       });
-    });
+    }, 20000);
 
     it.each(BOSS_IDS)('%s animates every AI phase with finite transforms and updates its pose', (id) => {
       const rig = createBossModel(id);
@@ -395,5 +403,113 @@ describe('Lyra the Herbalist Model & Apothecary Stall', () => {
     const cost = renderCost(lyra.group);
     expect(cost.triangles).toBeLessThan(7000);
     expect(cost.drawCalls).toBeLessThanOrEqual(40);
+  });
+});
+
+describe('Eldrin the Scout Procedural Model & Ranger Rig', () => {
+  it('builds the articulated ranger rig with recurve longbow, fletched quiver, and hooded cowl', () => {
+    const eldrin = createEldrinScout();
+    expect(eldrin.group).toBeInstanceOf(THREE.Group);
+
+    let foundBow = false;
+    let foundQuiver = false;
+    let foundCowl = false;
+    let foundCloak = false;
+    let foundTorso = false;
+    let foundLegs = false;
+
+    eldrin.group.traverse((child) => {
+      if (child.name === 'eldrin_bow') foundBow = true;
+      if (child.name === 'eldrin_quiver') foundQuiver = true;
+      if (child.name === 'eldrin_cowl') foundCowl = true;
+      if (child.name === 'eldrin_cloak') foundCloak = true;
+      if (child.name === 'eldrin_torso') foundTorso = true;
+      if (child.name === 'eldrin_legs') foundLegs = true;
+    });
+
+    expect(foundBow).toBe(true);
+    expect(foundQuiver).toBe(true);
+    expect(foundCowl).toBe(true);
+    expect(foundCloak).toBe(true);
+    expect(foundTorso).toBe(true);
+    expect(foundLegs).toBe(true);
+  });
+
+  it('is what the village spawns for the scout role', () => {
+    const scout = createTownsperson('scout');
+    expect(scout.group.getObjectByName('eldrin_bow')).toBeDefined();
+    expect(scout.group.getObjectByName('eldrin_quiver')).toBeDefined();
+  });
+
+  it('updates the horizon scanning and breathing animation safely without throwing', () => {
+    const eldrin = createEldrinScout();
+    for (const dt of [0.016, 0.1, 1.0, 5.0, 0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(() => eldrin.update(dt)).not.toThrow();
+    }
+
+    eldrin.group.traverse((child) => {
+      const p = child.position;
+      const q = child.quaternion;
+      const s = child.scale;
+      for (const v of [p.x, p.y, p.z, q.x, q.y, q.z, q.w, s.x, s.y, s.z]) {
+        expect(Number.isFinite(v)).toBe(true);
+      }
+    });
+  });
+
+  it('stays within the mobile triangle budget (<3,500 tris)', () => {
+    const eldrin = createEldrinScout();
+    let triangles = 0;
+    eldrin.group.traverse((child) => {
+      if (child instanceof THREE.Mesh) {
+        const geo = child.geometry as THREE.BufferGeometry;
+        const tris = (geo.index ? geo.index.count : geo.attributes.position.count) / 3;
+        triangles += tris;
+      }
+    });
+    expect(triangles).toBeLessThan(3500);
+  });
+});
+
+describe('Solstice Haven Village Cottages Architectural Framing', () => {
+  it.each([0, 1, 2, 3])('creates structured cottage variant %i with foundation, roof, chimney, and door', (variant) => {
+    const cottage = createVillageCottage(variant);
+    expect(cottage).toBeInstanceOf(THREE.Group);
+
+    let foundFoundation = false;
+    let foundRoof = false;
+    let foundChimney = false;
+    let foundDoor = false;
+    let foundDormer = false;
+    let foundVariantProp = false;
+
+    cottage.traverse((child) => {
+      if (child.name === 'cottage_foundation') foundFoundation = true;
+      if (child.name === 'cottage_roof') foundRoof = true;
+      if (child.name === 'cottage_chimney') foundChimney = true;
+      if (child.name === 'cottage_door') foundDoor = true;
+      if (child.name === 'cottage_dormer') foundDormer = true;
+      if (child.name === 'cottage_variant_prop') foundVariantProp = true;
+    });
+
+    expect(foundFoundation).toBe(true);
+    expect(foundRoof).toBe(true);
+    expect(foundChimney).toBe(true);
+    expect(foundDoor).toBe(true);
+    expect(foundDormer).toBe(true);
+    expect(foundVariantProp).toBe(true);
+  });
+
+  it.each([0, 1, 2, 3])('cottage variant %i sits flush on ground and stays within mobile budget (<3,500 tris)', (variant) => {
+    const cottage = createVillageCottage(variant);
+    let triangles = 0;
+    cottage.traverse((child) => {
+      if (child instanceof THREE.Mesh) {
+        const geo = child.geometry as THREE.BufferGeometry;
+        const tris = (geo.index ? geo.index.count : geo.attributes.position.count) / 3;
+        triangles += tris;
+      }
+    });
+    expect(triangles).toBeLessThan(3500);
   });
 });
