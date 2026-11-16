@@ -296,6 +296,11 @@ export class GameEngine {
         this.paused = !this.paused;
         this.syncPauseState('dev');
       },
+      onToggleMap: () => {
+        if (!this.started) return;
+        if (this.isCutscenePlaying || this.dialogueRunner.isOpen) return;
+        this.toggleAtlas();
+      },
       onTogglePause: () => {
         if (this.isCutscenePlaying) {
           this.endBossCutscene();
@@ -303,6 +308,12 @@ export class GameEngine {
         }
         if (this.dialogueRunner.isOpen) {
           this.closeDialogueAndRestoreControls();
+          return;
+        }
+        if (this.ui.isAtlasOpen()) {
+          this.ui.closeAtlas();
+          this.input.setUiBlocked(!this.started);
+          this.input.setPointerLockAllowed(this.started);
           return;
         }
         if (this.ui.isWorkedExampleOpen()) {
@@ -462,6 +473,15 @@ export class GameEngine {
       onInteract: () => {
         this.handleInteract();
       },
+      onOpenAtlas: () => {
+        this.input.setUiBlocked(true);
+        this.input.setPointerLockAllowed(false);
+        this.input.exitPointerLock();
+      },
+      onCloseAtlas: () => {
+        this.input.setUiBlocked(!this.started);
+        this.input.setPointerLockAllowed(this.started);
+      },
     }, this.settings);
 
     this.input.setUiBlocked(true);
@@ -546,6 +566,19 @@ export class GameEngine {
   public getActiveBoss(): BossRuntime | null {
     if (!this.activeBossId) return null;
     return this.bossRuntimes[this.activeBossId] ?? null;
+  }
+
+  public toggleAtlas(): void {
+    if (this.ui.isAtlasOpen()) {
+      this.ui.closeAtlas();
+      this.input.setUiBlocked(!this.started);
+      this.input.setPointerLockAllowed(this.started);
+    } else {
+      this.input.exitPointerLock();
+      this.input.setUiBlocked(true);
+      this.input.setPointerLockAllowed(false);
+      this.ui.openAtlas(this.playerPos, this.playerYaw, this.progression);
+    }
   }
 
   private warpToLandmark(target: BossId | 'hub'): void {
@@ -1150,6 +1183,7 @@ export class GameEngine {
         currentRegion,
         this.progression,
       );
+      this.ui.updateMinimap(this.playerPos, this.playerYaw, this.progression);
     }
   }
 

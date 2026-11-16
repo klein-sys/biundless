@@ -33,6 +33,7 @@ import {
   resetProgression,
   type ProgressionState,
 } from '../rpg/progressionSystem';
+import { InteractiveAtlas, worldToMapNormalized } from './InteractiveAtlas';
 
 export interface TelemetrySnapshot {
   fps: number;
@@ -64,6 +65,8 @@ export interface UIHandlers {
   onSaveProgress?: () => void;
   onReturnToTown?: () => void;
   onQuitToTitle?: () => void;
+  onOpenAtlas?: () => void;
+  onCloseAtlas?: () => void;
 }
 
 const SIGIL_SVG_PATHS: Record<DerivativeSigilId, string> = {
@@ -138,6 +141,14 @@ export class GameUI {
   private titleView: 'main' | 'settings' = 'main';
   private currentSettings: GameSettings;
 
+  private atlas!: InteractiveAtlas;
+  private minimapContainer!: HTMLElement;
+  private minimapCanvas!: HTMLCanvasElement;
+  private mHealBadge!: HTMLElement;
+  private lastKnownPlayerPos = { x: 0, z: 0 };
+  private lastKnownPlayerYaw = Math.PI;
+  private lastKnownProgression?: ProgressionState;
+
   constructor(root: HTMLElement, handlers: UIHandlers, initialSettings?: GameSettings) {
     this.root = root;
     this.handlers = handlers;
@@ -147,8 +158,19 @@ export class GameUI {
 
   private renderShell(): void {
     this.root.innerHTML = `
-      <!-- Top Left: Minimal Sleek Vitals & Flask Badge -->
+      <!-- Top Left: Minimap Radar & Minimal Sleek Vitals -->
       <div class="hud-top-left interactive">
+        <div id="minimap-container" class="minimap-container" title="Open Sunlit Valley Atlas (M / Tap)">
+          <canvas id="minimap-canvas" class="minimap-canvas" width="160" height="160"></canvas>
+          <div class="minimap-compass-ring">
+            <span class="minimap-compass-n">N</span>
+          </div>
+          <button id="minimap-expand-btn" class="minimap-expand-btn" aria-label="Expand Atlas">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2">
+              <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>
+            </svg>
+          </button>
+        </div>
         <div class="vitals-pod">
           <div class="vitals-row">
             <span class="hero-name">SPELLBLADE</span>
@@ -237,18 +259,65 @@ export class GameUI {
         </div>
       </div>
 
-      <!-- Mobile Touch Controls: Ergonomic Layout -->
+      <!-- Mobile Touch Controls: MOBA-Inspired Thumb Arc & Utility Bar -->
       <div id="mobile-controls" class="mobile-controls hidden">
-        <div id="touch-stick" class="touch-joystick-zone"><div id="touch-knob" class="touch-joystick-knob"></div></div>
-        <div class="touch-actions">
-          <button id="m-talk" class="touch-btn talk hidden" aria-label="Interact">TALK</button>
-          <button id="m-wheel" class="touch-btn" aria-label="Derivative Wheel">SIGIL</button>
-          <button id="m-lock" class="touch-btn" aria-label="Lock target">LOCK</button>
-          <button id="m-heal" class="touch-btn" aria-label="Heal">HEAL</button>
-          <button id="m-jump" class="touch-btn" aria-label="Jump">JUMP</button>
-          <button id="m-dodge" class="touch-btn" aria-label="Dash">DASH</button>
-          <button id="m-cast" class="touch-btn cast" aria-label="Cast Resonance">CAST</button>
-          <button id="m-attack" class="touch-btn strike" aria-label="Basic Strike">STRIKE</button>
+        <!-- Left: Compass-Ring Analog Joystick -->
+        <div id="touch-stick" class="touch-joystick-zone">
+          <div class="joystick-compass-mark n">▲</div>
+          <div class="joystick-compass-mark s">▼</div>
+          <div class="joystick-compass-mark w">◀</div>
+          <div class="joystick-compass-mark e">▶</div>
+          <div id="touch-knob" class="touch-joystick-knob">
+            <div class="knob-gem"></div>
+          </div>
+        </div>
+
+        <!-- Bottom Center: Horizontal Utility Bar (Town Warp, Heal, Talk, Sigil Wheel) -->
+        <div id="mobile-utility-bar" class="mobile-utility-bar">
+          <button id="m-town" class="m-util-btn" aria-label="Return to Solstice Haven">
+            <div class="m-util-icon">🏛️</div>
+            <span class="m-util-label">TOWN</span>
+          </button>
+          <button id="m-heal" class="m-util-btn" aria-label="Heal Flask">
+            <div class="m-util-icon">🧪</div>
+            <span id="m-heal-badge" class="m-util-badge">3</span>
+            <span class="m-util-label">HEAL</span>
+          </button>
+          <button id="m-talk" class="m-util-btn talk hidden" aria-label="Interact / Talk">
+            <div class="m-util-icon">💬</div>
+            <span class="m-util-label">TALK</span>
+          </button>
+          <button id="m-wheel" class="m-util-btn" aria-label="Attunement Wheel">
+            <div class="m-util-icon">⚙️</div>
+            <span class="m-util-label">SIGIL</span>
+          </button>
+        </div>
+
+        <!-- Bottom Right: Swept Thumb-Arc Cluster -->
+        <div id="mobile-combat-arc" class="touch-combat-cluster">
+          <!-- Primary Strike: Anchored prominently at right thumb rest -->
+          <button id="m-attack" class="touch-arc-btn strike" aria-label="Basic Strike">
+            <div class="arc-btn-bg"></div>
+            <span class="arc-btn-title">STRIKE</span>
+          </button>
+
+          <!-- Swept Radial Orbit: DASH, CAST, JUMP, LOCK -->
+          <button id="m-dodge" class="touch-arc-btn dash" aria-label="Dash / Dodge">
+            <span class="arc-icon">💨</span>
+            <span class="arc-label">DASH</span>
+          </button>
+          <button id="m-cast" class="touch-arc-btn cast" aria-label="Resonance Burst">
+            <span class="arc-icon">⚡</span>
+            <span class="arc-label">CAST</span>
+          </button>
+          <button id="m-jump" class="touch-arc-btn jump" aria-label="Jump">
+            <span class="arc-icon">▲</span>
+            <span class="arc-label">JUMP</span>
+          </button>
+          <button id="m-lock" class="touch-arc-btn lock" aria-label="Lock-On Target">
+            <span class="arc-icon">🎯</span>
+            <span class="arc-label">LOCK</span>
+          </button>
         </div>
       </div>
 
@@ -364,6 +433,36 @@ export class GameUI {
       this.hideBossCutscene();
     });
 
+    this.minimapContainer = this.root.querySelector('#minimap-container')!;
+    this.minimapCanvas = this.root.querySelector('#minimap-canvas')! as HTMLCanvasElement;
+    this.mHealBadge = this.root.querySelector('#m-heal-badge')!;
+
+    this.atlas = new InteractiveAtlas(
+      {
+        onWarp: (landmarkId) => {
+          this.handlers.onWarpBoss(landmarkId);
+        },
+        onClose: () => {
+          this.handlers.onCloseAtlas?.();
+        },
+      },
+      this.root,
+    );
+
+    const openAtlasFn = () => {
+      this.openAtlas(this.lastKnownPlayerPos, this.lastKnownPlayerYaw, this.lastKnownProgression);
+    };
+    if (this.minimapContainer) {
+      this.minimapContainer.addEventListener('click', openAtlasFn);
+    }
+    const expandBtn = this.root.querySelector('#minimap-expand-btn');
+    if (expandBtn) {
+      expandBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openAtlasFn();
+      });
+    }
+
     this.buildSigilPips();
     this.buildRadialWheel();
     this.buildTitleOverlay();
@@ -424,6 +523,7 @@ export class GameUI {
     if (this.hudTopLeft) this.hudTopLeft.classList.toggle('hud-hidden', !visible);
     if (this.hudTopRight) this.hudTopRight.classList.toggle('hud-hidden', !visible);
     if (this.hudBottomRight) this.hudBottomRight.classList.toggle('hud-hidden', !visible);
+    if (this.minimapContainer) this.minimapContainer.classList.toggle('hud-hidden', !visible);
     if (this.pointerHint) this.pointerHint.classList.toggle('hidden', !visible);
     if (this.bossHud) this.bossHud.classList.toggle('hud-hidden', !visible);
     if (this.mobileControls) this.mobileControls.classList.toggle('hud-hidden', !visible);
@@ -811,6 +911,13 @@ export class GameUI {
     mapBtn('#m-heal', () => this.handlers.onTouchAction('heal'));
     mapBtn('#m-lock', () => this.handlers.onToggleLockOn());
     mapBtn('#m-wheel', () => this.handlers.onOpenWheel());
+    mapBtn('#m-town', () => {
+      if (this.handlers.onReturnToTown) {
+        this.handlers.onReturnToTown();
+      } else {
+        this.handlers.onWarpBoss('hub');
+      }
+    });
   }
 
   public setMobileControlsVisible(visible: boolean): void {
@@ -827,10 +934,44 @@ export class GameUI {
 
   public isModalOpen(): boolean {
     return (
+      (this.atlas && this.atlas.visible) ||
       !this.titleOverlay.classList.contains('hidden') ||
       !this.settingsModal.classList.contains('hidden') ||
       !this.workedModal.classList.contains('hidden')
     );
+  }
+
+  public isAtlasOpen(): boolean {
+    return this.atlas?.visible ?? false;
+  }
+
+  public openAtlas(
+    playerPos?: { x: number; z: number },
+    playerYaw?: number,
+    progression?: ProgressionState,
+  ): void {
+    const pos = playerPos ?? this.lastKnownPlayerPos;
+    const yaw = playerYaw ?? this.lastKnownPlayerYaw;
+    const prog = progression ?? this.lastKnownProgression;
+    this.atlas.open(pos, yaw, prog);
+    this.handlers.onOpenAtlas?.();
+  }
+
+  public closeAtlas(): void {
+    this.atlas.close();
+    this.handlers.onCloseAtlas?.();
+  }
+
+  public toggleAtlas(
+    playerPos?: { x: number; z: number },
+    playerYaw?: number,
+    progression?: ProgressionState,
+  ): void {
+    if (this.atlas.visible) {
+      this.closeAtlas();
+    } else {
+      this.openAtlas(playerPos, playerYaw, progression);
+    }
   }
 
   public closeSettingsModal(): void {
@@ -1320,6 +1461,9 @@ export class GameUI {
     this.staminaFill.style.width = `${Math.max(0, Math.min(100, (player.stamina / maxStam) * 100))}%`;
     this.vitalsHpNum.textContent = `${Math.max(0, player.hp)}/${maxHp}`;
     this.root.querySelector('#flask-label')!.textContent = `${player.flasksRemaining}`;
+    if (this.mHealBadge) {
+      this.mHealBadge.textContent = `${player.flasksRemaining}`;
+    }
 
     if (progression) {
       this.levelBadge.textContent = `LVL ${progression.level}`;
@@ -1438,5 +1582,114 @@ export class GameUI {
 
   public closeDialogue(): void {
     this.dialogueCard.classList.add('hidden');
+  }
+
+  public updateMinimap(
+    playerPos: { x: number; z: number },
+    playerYaw: number,
+    progression?: ProgressionState,
+  ): void {
+    this.lastKnownPlayerPos = playerPos;
+    this.lastKnownPlayerYaw = playerYaw;
+    this.lastKnownProgression = progression;
+
+    if (this.atlas && this.atlas.visible) {
+      this.atlas.updatePlayerLive(playerPos, playerYaw);
+    }
+
+    if (!this.minimapCanvas) return;
+    const ctx = this.minimapCanvas.getContext?.('2d');
+    if (!ctx) return;
+
+    const w = this.minimapCanvas.width;
+    const h = this.minimapCanvas.height;
+    const cx = w / 2;
+    const cy = h / 2;
+    const r = cx - 2;
+
+    ctx.clearRect(0, 0, w, h);
+    ctx.save();
+
+    // Circular clip
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.clip();
+
+    // Background lush valley terrain
+    const bgGrad = ctx.createRadialGradient(cx, cy, 8, cx, cy, r);
+    bgGrad.addColorStop(0, '#1c3e2b');
+    bgGrad.addColorStop(0.7, '#0e2619');
+    bgGrad.addColorStop(1, '#05160d');
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, w, h);
+
+    // Outer valley ring guideline
+    ctx.strokeStyle = 'rgba(52, 211, 153, 0.2)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r * 0.88, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Sunlit brook channel (curved line with light blue glow)
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.45)';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(w * 0.1, h * 0.42);
+    ctx.quadraticCurveTo(cx, h * 0.45, w * 0.9, h * 0.43);
+    ctx.stroke();
+
+    // Solstice Haven Town Wall Perimeter Circle (center radius ~15px)
+    ctx.strokeStyle = 'rgba(251, 191, 36, 0.7)';
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 14, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Landmark dots
+    // Solstice Haven Hub (0, 0)
+    ctx.fillStyle = '#fbbf24';
+    ctx.beginPath();
+    ctx.arc(cx, cy, 3, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Boss Landmarks: Witch (-52, -42), Lich (12, 54), Dragon (48, -48)
+    const landmarks = [
+      { x: -52, z: -42, color: '#38bdf8' },
+      { x: 12, z: 54, color: '#c084fc' },
+      { x: 48, z: -48, color: '#f59e0b' },
+    ];
+    for (const lm of landmarks) {
+      const { u, v } = worldToMapNormalized(lm.x, lm.z);
+      ctx.fillStyle = lm.color;
+      ctx.beginPath();
+      ctx.arc(u * w, v * h, 3.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Player marker
+    const { u: pU, v: pV } = worldToMapNormalized(playerPos.x, playerPos.z);
+    const px = pU * w;
+    const py = pV * h;
+
+    // Player heading cone
+    const coneLen = 14;
+    const angle = -playerYaw - Math.PI / 2;
+    ctx.fillStyle = 'rgba(56, 189, 248, 0.35)';
+    ctx.beginPath();
+    ctx.moveTo(px, py);
+    ctx.arc(px, py, coneLen, angle - 0.45, angle + 0.45);
+    ctx.closePath();
+    ctx.fill();
+
+    // Player beacon core dot
+    ctx.fillStyle = '#ffffff';
+    ctx.strokeStyle = '#0284c7';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(px, py, 3.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.restore();
   }
 }

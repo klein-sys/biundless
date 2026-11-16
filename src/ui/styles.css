@@ -69,14 +69,88 @@ body {
 }
 
 /* =========================================================
-   TOP LEFT: Compact Floating Vitals
+   TOP LEFT: Compact Floating Vitals & Minimap Radar
    ========================================================= */
 .hud-top-left {
   position: fixed;
   top: max(14px, env(safe-area-inset-top));
   left: max(16px, env(safe-area-inset-left));
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
   z-index: 10;
   transition: opacity 0.35s ease, transform 0.35s ease;
+}
+
+.minimap-container {
+  position: relative;
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  border: 2px solid rgba(213, 184, 104, 0.85);
+  background: radial-gradient(circle, rgba(14, 38, 26, 0.85), rgba(5, 20, 13, 0.95));
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4), inset 0 0 10px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(8px);
+  cursor: pointer;
+  overflow: visible;
+  transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.18s ease;
+  user-select: none;
+  touch-action: manipulation;
+  flex-shrink: 0;
+}
+
+.minimap-container:hover {
+  transform: scale(1.05);
+  box-shadow: 0 6px 22px rgba(213, 184, 104, 0.45);
+}
+
+.minimap-canvas {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  display: block;
+}
+
+.minimap-compass-ring {
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  border: 1px dashed rgba(255, 217, 120, 0.4);
+  pointer-events: none;
+}
+
+.minimap-compass-n {
+  position: absolute;
+  top: -5px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: var(--font-display);
+  font-size: 9px;
+  font-weight: 800;
+  color: #ffd978;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9);
+}
+
+.minimap-expand-btn {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1.5px solid #ffffff;
+  background: radial-gradient(circle, #ffd978, #d97706);
+  color: #261603;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+
+.minimap-expand-btn:hover {
+  transform: scale(1.15);
 }
 
 .vitals-pod {
@@ -578,7 +652,7 @@ body {
 }
 
 /* =========================================================
-   MOBILE TOUCH CONTROLS
+   MOBILE TOUCH CONTROLS (MOBA Radial Thumb Arc & Utility Bar)
    ========================================================= */
 .mobile-controls {
   position: fixed;
@@ -587,77 +661,252 @@ body {
   z-index: 8;
 }
 
+/* Left: Ornate Compass-Ring Analog Joystick */
 .touch-joystick-zone {
   position: fixed;
-  left: max(16px, env(safe-area-inset-left));
-  bottom: max(22px, env(safe-area-inset-bottom));
-  width: 128px;
-  height: 128px;
+  left: max(18px, env(safe-area-inset-left));
+  bottom: max(20px, env(safe-area-inset-bottom));
+  width: 136px;
+  height: 136px;
   border-radius: 50%;
-  border: 1.5px solid rgba(255, 255, 255, 0.75);
-  background: radial-gradient(circle, rgba(255, 255, 255, 0.25), rgba(40, 60, 80, 0.35));
-  backdrop-filter: blur(4px);
+  border: 2px solid rgba(255, 255, 255, 0.65);
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.12), rgba(15, 23, 42, 0.5));
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35), inset 0 0 12px rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   pointer-events: auto;
   touch-action: none;
 }
+
+.joystick-compass-mark {
+  position: absolute;
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 8px;
+  pointer-events: none;
+  user-select: none;
+}
+.joystick-compass-mark.n { top: 4px; left: 50%; transform: translateX(-50%); }
+.joystick-compass-mark.s { bottom: 4px; left: 50%; transform: translateX(-50%); }
+.joystick-compass-mark.w { left: 4px; top: 50%; transform: translateY(-50%); }
+.joystick-compass-mark.e { right: 4px; top: 50%; transform: translateY(-50%); }
 
 .touch-joystick-knob {
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 48px;
-  height: 48px;
-  margin-left: -24px;
-  margin-top: -24px;
+  width: 52px;
+  height: 52px;
+  margin-left: -26px;
+  margin-top: -26px;
   border-radius: 50%;
   border: 2px solid #ffffff;
-  background: radial-gradient(circle, #ffffff, #f0ebd8);
-  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.25);
-}
-
-.touch-actions {
-  position: fixed;
-  right: max(14px, env(safe-area-inset-right));
-  bottom: max(18px, env(safe-area-inset-bottom));
-  display: grid;
-  grid-template-columns: repeat(3, 54px);
-  gap: 8px;
-  pointer-events: auto;
-}
-
-.touch-btn {
-  width: 54px;
-  height: 54px;
-  border-radius: 50%;
-  border: 1.5px solid rgba(255, 255, 255, 0.85);
-  background: rgba(255, 253, 246, 0.88);
-  color: var(--adv-text);
-  font-family: var(--font-display);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
+  background: radial-gradient(circle at 35% 35%, #ffffff, #e2e8f0);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4), inset 0 1px 2px #ffffff;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.15);
-  backdrop-filter: blur(6px);
-  touch-action: none;
+}
+
+.knob-gem {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #fbbf24, #d97706);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+}
+
+/* Bottom Center: Horizontal Utility Bar (Town Warp, Heal Flask, Talk, Sigil Wheel) */
+.mobile-utility-bar {
+  position: fixed;
+  bottom: max(16px, env(safe-area-inset-bottom));
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 12px;
+  pointer-events: auto;
+  z-index: 10;
+}
+
+.m-util-btn {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(213, 184, 104, 0.6);
+  background: rgba(15, 23, 42, 0.68);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #f8fafc;
   cursor: pointer;
+  touch-action: manipulation;
+  transition: transform 0.12s ease, filter 0.12s ease;
+  user-select: none;
+  padding: 0;
 }
 
-.touch-btn.strike {
-  border-color: #ffd875;
-  background: radial-gradient(circle, #ffd875, #e69d28);
-  color: #3b2200;
-  grid-column: span 2;
-  width: 116px;
-  border-radius: 27px;
+.m-util-btn:active {
+  transform: scale(0.92);
+  filter: brightness(1.25);
 }
 
-.touch-btn.cast {
-  border-color: #88c9ff;
-  background: radial-gradient(circle, #88c9ff, #388ae0);
-  color: #062b54;
+.m-util-icon {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.m-util-label {
+  font-family: var(--font-display);
+  font-size: 7.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #d5b868;
+  margin-top: 1px;
+}
+
+.m-util-badge {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  background: radial-gradient(circle, #ef4444, #991b1b);
+  border: 1.5px solid #fff;
+  border-radius: 999px;
+  color: #fff;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 800;
+  padding: 1px 5px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+
+.m-util-btn.talk {
+  border-color: #4ade80;
+  background: rgba(22, 101, 52, 0.8);
+}
+
+/* Bottom Right: Swept Thumb-Arc Cluster */
+.touch-combat-cluster {
+  position: fixed;
+  right: max(12px, env(safe-area-inset-right));
+  bottom: max(14px, env(safe-area-inset-bottom));
+  width: 220px;
+  height: 220px;
+  pointer-events: auto;
+  z-index: 10;
+}
+
+.touch-arc-btn {
+  border-radius: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  touch-action: manipulation;
+  user-select: none;
+  transition: transform 0.1s ease, filter 0.1s ease;
+  padding: 0;
+}
+
+.touch-arc-btn:active {
+  transform: scale(0.92);
+  filter: brightness(1.2);
+}
+
+/* Primary Strike Button: Anchored at thumb rest */
+.touch-arc-btn.strike {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  width: 82px;
+  height: 82px;
+  border: 3px solid #ffd978;
+  background: radial-gradient(circle at 35% 35%, #ffe699, #d97706);
+  box-shadow: 0 4px 22px rgba(217, 119, 6, 0.5), inset 0 2px 4px #ffffff;
+  color: #3b1e02;
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  z-index: 3;
+}
+
+/* Swept Arc: DASH, CAST, JUMP, LOCK */
+.touch-arc-btn.dash {
+  position: absolute;
+  right: 104px;
+  bottom: 10px;
+  width: 56px;
+  height: 56px;
+  border: 2px solid rgba(255, 255, 255, 0.75);
+  background: radial-gradient(circle at 35% 35%, rgba(255, 255, 255, 0.95), rgba(203, 213, 225, 0.88));
+  color: #1e293b;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+  z-index: 2;
+}
+
+.touch-arc-btn.cast {
+  position: absolute;
+  right: 94px;
+  bottom: 80px;
+  width: 62px;
+  height: 62px;
+  border: 2.5px solid #7dd3fc;
+  background: radial-gradient(circle at 35% 35%, #bae6fd, #0284c7);
+  color: #082f49;
+  box-shadow: 0 4px 20px rgba(2, 132, 199, 0.45);
+  z-index: 2;
+}
+
+.touch-arc-btn.jump {
+  position: absolute;
+  right: 14px;
+  bottom: 104px;
+  width: 54px;
+  height: 54px;
+  border: 2px solid rgba(255, 255, 255, 0.75);
+  background: radial-gradient(circle at 35% 35%, rgba(255, 255, 255, 0.95), rgba(226, 232, 240, 0.88));
+  color: #1e293b;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+  z-index: 2;
+}
+
+.touch-arc-btn.lock {
+  position: absolute;
+  right: 80px;
+  bottom: 154px;
+  width: 44px;
+  height: 44px;
+  border: 1.5px solid #cbd5e1;
+  background: rgba(30, 41, 59, 0.88);
+  color: #f8fafc;
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.3);
+  z-index: 1;
+}
+
+.arc-icon {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.arc-label {
+  font-family: var(--font-display);
+  font-size: 7.5px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  margin-top: 1px;
+}
+
+/* Fallback / legacy support for existing tests */
+.touch-actions {
+  display: contents;
+}
+.touch-btn {
+  display: none;
 }
 
 /* =========================================================
@@ -1815,7 +2064,7 @@ body {
   margin-top: 4px;
 }
 
-@media (max-width: 820px) {
+@media (max-width: 820px), (max-height: 540px) {
   .hud-bottom-right {
     top: auto;
     bottom: max(225px, calc(env(safe-area-inset-bottom) + 215px));
@@ -2042,4 +2291,465 @@ body {
   border-radius: 999px;
   transition: width 0.2s ease-out;
 }
+
+/* =========================================================
+   INTERACTIVE ATLAS MODAL (Sunlit Valley Fantasy Map)
+   ========================================================= */
+.atlas-backdrop {
+  z-index: 45;
+}
+
+.atlas-window {
+  width: min(920px, 94vw);
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  padding: 18px 24px 20px;
+  background: radial-gradient(ellipse at 50% 10%, rgba(30, 41, 59, 0.98), rgba(15, 23, 42, 0.99));
+  border: 2px solid var(--adv-gold);
+  border-radius: 20px;
+  box-shadow: 0 16px 60px rgba(0, 0, 0, 0.6), 0 0 24px rgba(213, 184, 104, 0.2);
+  color: #f8fafc;
+}
+
+.atlas-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.atlas-kicker {
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  color: var(--adv-gold);
+}
+
+.atlas-heading {
+  font-family: var(--font-display);
+  font-size: 1.45rem;
+  letter-spacing: 0.08em;
+  margin: 2px 0 0;
+  color: #fff;
+}
+
+.close-atlas-btn {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #fff;
+}
+
+.close-atlas-btn:hover {
+  background: rgba(255, 255, 255, 0.25);
+  transform: scale(1.08);
+}
+
+.atlas-map-canvas-container {
+  position: relative;
+  width: 100%;
+  height: 52vh;
+  min-height: 280px;
+  max-height: 480px;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1.5px solid rgba(213, 184, 104, 0.4);
+  box-shadow: inset 0 0 30px rgba(0, 0, 0, 0.7);
+  background: #09121d;
+}
+
+.atlas-svg-backdrop {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.atlas-pins-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.atlas-pin-wrapper {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  pointer-events: auto;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  z-index: 5;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.atlas-pin-wrapper:hover,
+.atlas-pin-wrapper.selected {
+  transform: translate(-50%, -50%) scale(1.15);
+  z-index: 8;
+}
+
+.atlas-pin-btn {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+}
+
+.atlas-pin-pulse {
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  border: 2px solid #fbbf24;
+  opacity: 0.75;
+  animation: pinPulse 2s cubic-bezier(0.24, 0, 0.38, 1) infinite;
+}
+
+@keyframes pinPulse {
+  0% { transform: scale(0.8); opacity: 0.9; }
+  100% { transform: scale(1.8); opacity: 0; }
+}
+
+.atlas-pin-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 2px solid #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  box-shadow: 0 3px 10px rgba(0,0,0,0.4);
+}
+
+.atlas-pin-label {
+  margin-top: 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.pin-title {
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: #fff;
+  background: rgba(15, 23, 42, 0.75);
+  padding: 2px 6px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+}
+
+.pin-status.vanquished {
+  font-size: 8px;
+  font-weight: 800;
+  color: #4ade80;
+  letter-spacing: 0.06em;
+  margin-top: 1px;
+}
+
+.atlas-player-pin {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.player-heading-cone {
+  width: 0;
+  height: 0;
+  border-left: 10px solid transparent;
+  border-right: 10px solid transparent;
+  border-bottom: 24px solid rgba(56, 189, 248, 0.45);
+  position: absolute;
+  top: -20px;
+  left: 50%;
+  margin-left: -10px;
+  transform-origin: 50% 100%;
+}
+
+.player-beacon-core {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #38bdf8;
+  border: 2.5px solid #ffffff;
+  box-shadow: 0 0 12px #38bdf8, 0 0 4px #fff;
+  animation: beaconGlow 1.5s ease-in-out infinite alternate;
+}
+
+@keyframes beaconGlow {
+  from { box-shadow: 0 0 8px #38bdf8; }
+  to { box-shadow: 0 0 18px #38bdf8, 0 0 6px #fff; }
+}
+
+.player-beacon-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 800;
+  color: #38bdf8;
+  background: rgba(15, 23, 42, 0.85);
+  padding: 1px 4px;
+  border-radius: 4px;
+  margin-top: 2px;
+}
+
+.atlas-footer-panel {
+  margin-top: 12px;
+}
+
+.atlas-detail-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 18px;
+  background: rgba(30, 41, 59, 0.7);
+  border: 1.5px solid var(--adv-border);
+  border-radius: 12px;
+  backdrop-filter: blur(8px);
+}
+
+.atlas-detail-card.empty {
+  justify-content: center;
+  color: var(--adv-text-muted);
+  font-size: 12px;
+  letter-spacing: 0.05em;
+  font-style: italic;
+}
+
+.detail-crest {
+  font-family: var(--font-display);
+  font-size: 9px;
+  letter-spacing: 0.15em;
+  color: var(--adv-gold);
+  display: block;
+}
+
+.detail-name {
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  margin: 2px 0 0;
+}
+
+.detail-subtitle {
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.detail-meta {
+  display: flex;
+  gap: 8px;
+}
+
+.meta-pill {
+  font-size: 11px;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  padding: 4px 8px;
+  color: #cbd5e1;
+}
+
+.atlas-btn {
+  padding: 10px 20px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+/* =========================================================
+   MOBILE LANDSCAPE & COMPACT VIEWPORT RULES (Images 3 & 4)
+   ========================================================= */
+@media (max-height: 540px) and (orientation: landscape), (max-width: 820px) {
+  /* Floating Frosted Title Screen Card (Image 4 fix: keeps >80% 3D scene visible) */
+  .title-sidebar-overlay {
+    top: 10px;
+    left: 10px;
+    bottom: 10px;
+    width: min(320px, 40vw);
+    height: auto;
+    border-radius: 18px;
+    border: 1.5px solid rgba(213, 184, 104, 0.5);
+    background: rgba(255, 252, 244, 0.82);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
+  }
+
+  .title-sidebar-content {
+    padding: 14px 16px;
+    gap: 8px;
+  }
+
+  .title-crest {
+    font-size: 9px;
+    letter-spacing: 0.12em;
+    margin-bottom: 2px;
+  }
+
+  .title-main {
+    font-size: 1.3rem;
+    letter-spacing: 0.08em;
+    line-height: 1.1;
+    margin: 0 0 2px;
+  }
+
+  .title-sub {
+    font-size: 0.72rem;
+    line-height: 1.25;
+    margin-bottom: 4px;
+  }
+
+  .title-desc {
+    font-size: 0.75rem;
+    line-height: 1.3;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    margin-bottom: 6px;
+  }
+
+  .controls-cheat {
+    display: none;
+  }
+
+  .title-actions {
+    gap: 6px;
+  }
+
+  .title-actions .adv-btn {
+    padding: 8px 12px;
+    font-size: 11px;
+    height: 36px;
+  }
+
+  .title-quick-warps {
+    gap: 4px;
+  }
+
+  .title-quick-warps .adv-btn.sm {
+    font-size: 9.5px;
+    padding: 4px 6px;
+  }
+
+  /* Compact Mobile Vitals Pod (Image 3 fix) */
+  .hud-top-left {
+    gap: 8px;
+    top: max(8px, env(safe-area-inset-top));
+    left: max(10px, env(safe-area-inset-left));
+  }
+
+  .minimap-container {
+    width: 76px;
+    height: 76px;
+  }
+
+  .vitals-pod {
+    width: 155px;
+    padding: 6px 10px;
+    border-radius: 12px;
+  }
+
+  .vitals-row {
+    font-size: 9.5px;
+    margin-bottom: 2px;
+  }
+
+  .hero-name {
+    font-size: 9.5px;
+  }
+
+  .vitals-num {
+    font-size: 9px;
+  }
+
+  .bar-pill {
+    height: 5px;
+    margin-bottom: 3px;
+  }
+
+  .bar-pill.stam-track {
+    height: 4px;
+    margin-bottom: 2px;
+  }
+
+  .hero-level-badge {
+    font-size: 9px;
+  }
+
+  .flask-pill {
+    display: none; /* Handled by mobile utility bar HEAL */
+  }
+
+  /* Dock Active Derivative Medallion to top right beside POV & MENU */
+  .hud-bottom-right {
+    top: max(8px, env(safe-area-inset-top));
+    bottom: auto;
+    right: max(112px, calc(env(safe-area-inset-right) + 104px));
+    z-index: 10;
+  }
+
+  .sigil-pips-row {
+    display: none;
+  }
+
+  .active-medallion {
+    padding: 4px 8px;
+    height: 36px;
+    border-radius: 18px;
+  }
+
+  .medallion-label {
+    font-size: 11px;
+  }
+
+  .medallion-hint {
+    font-size: 8.5px;
+  }
+
+  /* Compact Atlas on mobile */
+  .atlas-window {
+    width: 95vw;
+    padding: 12px 14px;
+    max-height: 94vh;
+  }
+
+  .atlas-map-canvas-container {
+    height: 46vh;
+    min-height: 200px;
+  }
+
+  .atlas-heading {
+    font-size: 1.1rem;
+  }
+
+  .atlas-detail-card {
+    padding: 8px 12px;
+    gap: 8px;
+  }
+
+  .detail-name {
+    font-size: 1rem;
+  }
+
+  .detail-meta {
+    display: none;
+  }
+}
+
 

@@ -6,6 +6,7 @@ export interface InputCallbacks {
   onToggleWheel: (open: boolean) => void;
   onToggleDev: () => void;
   onTogglePause: () => void;
+  onToggleMap?: () => void;
   onFirstUserGesture: () => void;
   onPointerLockChange?: (locked: boolean) => void;
 }
@@ -144,7 +145,16 @@ export class InputManager {
         this.callbacks.onToggleDev();
         return;
       }
-      if (e.code === 'Escape' || e.code === 'KeyM') {
+      if (e.code === 'KeyM') {
+        e.preventDefault();
+        if (this.callbacks.onToggleMap) {
+          this.callbacks.onToggleMap();
+        } else {
+          this.callbacks.onTogglePause();
+        }
+        return;
+      }
+      if (e.code === 'Escape') {
         e.preventDefault();
         this.callbacks.onTogglePause();
         return;
