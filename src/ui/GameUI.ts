@@ -1300,7 +1300,7 @@ export class GameUI {
                 </div>
                 <div class="control-entry">
                   <div class="key-badges"><span class="kbd">F</span></div>
-                  <span class="entry-desc">Interact / Talk with NPCs</span>
+                  <span class="entry-desc">Interact / Talk / Harvest / Rest</span>
                 </div>
                 <div class="control-entry">
                   <div class="key-badges"><span class="kbd">M</span></div>
@@ -1357,8 +1357,8 @@ export class GameUI {
                   <span class="entry-desc">Bottom bar: drink Crimson Flask (Charges)</span>
                 </div>
                 <div class="control-entry">
-                  <div class="key-badges"><span class="touch-badge">💬 TALK</span></div>
-                  <span class="entry-desc">Contextual prompt: converse with NPCs</span>
+                  <div class="key-badges"><span class="touch-badge">💬 CONTEXT</span></div>
+                  <span class="entry-desc">Contextual prompt: converse with NPCs, harvest flora/ore, read guides, or rest</span>
                 </div>
                 <div class="control-entry">
                   <div class="key-badges"><span class="touch-badge">⚙️ SIGIL</span></div>
@@ -1813,7 +1813,17 @@ export class GameUI {
     this.dialogueSpeakerName.textContent = node.speakerName;
     this.dialogueSpeakerTitle.textContent = node.speakerTitle;
     this.dialogueLvl.textContent = `Astral Lvl ${progression.level}`;
-    this.dialoguePoints.textContent = `${progression.statPoints} Stat Pt${progression.statPoints === 1 ? '' : 's'}`;
+    if (node.speakerRole === 'blacksmith') {
+      const ore = progression.inventory?.['mithrilOre'] ?? 0;
+      const bone = progression.inventory?.['ancientBone'] ?? 0;
+      this.dialoguePoints.textContent = `Satchel: ${ore} Ore · ${bone} Bone`;
+    } else if (node.speakerRole === 'herbalist') {
+      const flora = progression.inventory?.['moonbell'] ?? 0;
+      const essence = progression.inventory?.['phaseEssence'] ?? 0;
+      this.dialoguePoints.textContent = `Satchel: ${flora} Flora · ${essence} Essence`;
+    } else {
+      this.dialoguePoints.textContent = `${progression.statPoints} Stat Pt${progression.statPoints === 1 ? '' : 's'}`;
+    }
     this.dialogueBody.textContent = node.text;
 
     this.dialogueChoices.innerHTML = '';
