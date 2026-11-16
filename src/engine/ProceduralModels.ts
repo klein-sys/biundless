@@ -22,8 +22,15 @@ import {
 } from './Shaders';
 import {
   alignSegmentDown,
+  approach,
+  lerpKeys,
   mergeStaticMeshes,
+  PixelCanvas,
   solveTwoBoneArm,
+  sweepGeometry,
+  taperTube,
+  v3,
+  valueNoise,
 } from './SculptKit';
 import { createWhisperingGlade, type WhisperingGlade } from './WhisperingGlade';
 
@@ -5439,4 +5446,917 @@ export function createSolsticeHavenVillage(): SolsticeHavenBundle {
       }
     },
   };
+}
+
+// =========================================================================
+// WILD MINIONS & GATHERING NODES PROCEDURAL SCULPTING (SculptKit Standard)
+// =========================================================================
+
+export interface MinionModelBundle {
+  group: THREE.Group;
+  update: (dt: number, state?: string) => void;
+}
+
+export interface HarvestableNodeModelBundle {
+  group: THREE.Group;
+  update: (dt: number) => void;
+  setHarvested: (harvested: boolean) => void;
+}
+
+/**
+ * Procedural Boss-Tier Phase Wolf Model (Resonant to sin/cos)
+ * Features swept spine Catmull-Rom contours, procedural fur texture tone bands,
+ * glowing lunar eyes, swept tail, and articulated leg joints.
+ * Mobile triangle budget: <1,200 tris.
+ */
+export function createPhaseWolfModel(): MinionModelBundle {
+  const group = new THREE.Group();
+  group.name = 'phase_wolf_rig';
+
+  // In-memory procedural fur texture (zero DOM dependency)
+  const furCanvas = new PixelCanvas(64, 64, [32, 45, 68]);
+  furCanvas.shade((u, v) => {
+    const noise = valueNoise(u * 8, v * 8) * 18;
+    const stripe = Math.sin(u * Math.PI * 6 + v * 3) * 14;
+    const r = Math.max(0, Math.min(255, 28 + noise + stripe));
+    const g = Math.max(0, Math.min(255, 42 + noise * 1.1 + stripe));
+    const b = Math.max(0, Math.min(255, 68 + noise * 1.3 + stripe * 1.2));
+    return [r, g, b];
+  });
+  const furTex = furCanvas.toTexture();
+  const furMat = new THREE.MeshStandardMaterial({
+    map: furTex,
+    roughness: 0.8,
+    metalness: 0.1,
+  });
+
+  const eyeMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
+  const runeMat = new THREE.MeshStandardMaterial({
+    color: 0x38bdf8,
+    emissive: 0x0284c7,
+    emissiveIntensity: 0.75,
+    roughness: 0.3,
+  });
+
+  // 1. Swept Catmull-Rom Torso Spine
+  const spinePts = [
+    v3(0, 0.46, -0.52),
+    v3(0, 0.58, -0.22),
+    v3(0, 0.66, 0.16),
+    v3(0, 0.74, 0.46),
+  ];
+  const torsoGeo = sweepGeometry(spinePts, 8, {
+    radial: 7,
+    radius: (t) => lerpKeys([[0, 0.20], [0.35, 0.30], [0.75, 0.26], [1.0, 0.20]], t),
+    scaleX: () => 0.78,
+    scaleY: () => 1.08,
+    capStart: true,
+    capEnd: true,
+  });
+  const torsoMesh = new THREE.Mesh(torsoGeo, furMat);
+  torsoMesh.castShadow = true;
+  group.add(torsoMesh);
+
+  // 2. Swept Neck & Cranium
+  const neckPts = [
+    v3(0, 0.74, 0.46),
+    v3(0, 0.90, 0.65),
+    v3(0, 1.02, 0.82),
+  ];
+  const neckGeo = sweepGeometry(neckPts, 5, {
+    radial: 6,
+    radius: (t) => lerpKeys([[0, 0.20], [0.5, 0.16], [1.0, 0.13]], t),
+    scaleX: () => 0.82,
+    capEnd: true,
+  });
+  const neckMesh = new THREE.Mesh(neckGeo, furMat);
+  neckMesh.castShadow = true;
+  group.add(neckMesh);
+
+  // Muzzle swept forward
+  const muzzlePts = [
+    v3(0, 1.02, 0.82),
+    v3(0, 0.98, 1.02),
+    v3(0, 0.94, 1.18),
+  ];
+  const muzzleGeo = sweepGeometry(muzzlePts, 4, {
+    radial: 6,
+    radius: (t) => lerpKeys([[0, 0.12], [0.6, 0.08], [1.0, 0.04]], t),
+    scaleX: () => 0.65,
+    scaleY: () => 0.8,
+    capEnd: true,
+  });
+  const muzzleMesh = new THREE.Mesh(muzzleGeo, furMat);
+  muzzleMesh.castShadow = true;
+  group.add(muzzleMesh);
+
+  // Pointed lupine ears
+  const earLGeo = sweepGeometry([v3(-0.08, 1.06, 0.76), v3(-0.12, 1.22, 0.72), v3(-0.14, 1.32, 0.68)], 3, {
+    radial: 4,
+    radius: (t) => lerpKeys([[0, 0.05], [0.5, 0.035], [1.0, 0.008]], t),
+    scaleX: () => 0.35,
+    capStart: true,
+    capEnd: true,
+  });
+  const earL = new THREE.Mesh(earLGeo, furMat);
+  group.add(earL);
+
+  const earRGeo = sweepGeometry([v3(0.08, 1.06, 0.76), v3(0.12, 1.22, 0.72), v3(0.14, 1.32, 0.68)], 3, {
+    radial: 4,
+    radius: (t) => lerpKeys([[0, 0.05], [0.5, 0.035], [1.0, 0.008]], t),
+    scaleX: () => 0.35,
+    capStart: true,
+    capEnd: true,
+  });
+  const earR = new THREE.Mesh(earRGeo, furMat);
+  group.add(earR);
+
+  // Glowing lunar eyes
+  const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.032, 6, 6), eyeMat);
+  eyeL.position.set(-0.075, 1.02, 0.94);
+  group.add(eyeL);
+
+  const eyeR = new THREE.Mesh(new THREE.SphereGeometry(0.032, 6, 6), eyeMat);
+  eyeR.position.set(0.075, 1.02, 0.94);
+  group.add(eyeR);
+
+  // Phase crest lunar sigil on forehead
+  const crestMesh = new THREE.Mesh(new THREE.OctahedronGeometry(0.045, 0), runeMat);
+  crestMesh.position.set(0, 1.08, 0.88);
+  crestMesh.scale.set(0.6, 1.0, 0.4);
+  group.add(crestMesh);
+
+  // 3. Swept Tail
+  const tailPivot = new THREE.Group();
+  tailPivot.position.set(0, 0.50, -0.52);
+  const tailPts = [
+    v3(0, 0, 0),
+    v3(0, 0.08, -0.24),
+    v3(0, -0.06, -0.50),
+    v3(0, -0.24, -0.66),
+  ];
+  const tailGeo = sweepGeometry(tailPts, 6, {
+    radial: 5,
+    radius: (t) => lerpKeys([[0, 0.07], [0.4, 0.13], [0.8, 0.10], [1.0, 0.02]], t),
+    capStart: true,
+    capEnd: true,
+  });
+  const tailMesh = new THREE.Mesh(tailGeo, furMat);
+  tailPivot.add(tailMesh);
+  group.add(tailPivot);
+
+  // 4. Articulated Legs
+  const buildWolfLeg = (ox: number, oz: number, isFront: boolean) => {
+    const pivot = new THREE.Group();
+    pivot.position.set(ox, isFront ? 0.58 : 0.52, oz);
+
+    // Upper leg / haunch
+    const upperGeo = taperTube([v3(0, 0, 0), v3(0, -0.28, isFront ? 0.02 : -0.04)], 0.08, 0.06, 5);
+    const upperMesh = new THREE.Mesh(upperGeo, furMat);
+    upperMesh.castShadow = true;
+    pivot.add(upperMesh);
+
+    // Lower shin / paw sitting flush on ground (y=0)
+    const lowerGeo = taperTube([v3(0, -0.28, isFront ? 0.02 : -0.04), v3(0, isFront ? -0.58 : -0.52, isFront ? 0.04 : 0.02)], 0.06, 0.045, 5);
+    const lowerMesh = new THREE.Mesh(lowerGeo, furMat);
+    lowerMesh.castShadow = true;
+    pivot.add(lowerMesh);
+
+    // Grounded paw
+    const paw = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.06, 0.14), furMat);
+    paw.position.set(0, isFront ? -0.55 : -0.49, isFront ? 0.08 : 0.06);
+    pivot.add(paw);
+
+    group.add(pivot);
+    return pivot;
+  };
+
+  const legFL = buildWolfLeg(-0.16, 0.32, true);
+  const legFR = buildWolfLeg(0.16, 0.32, true);
+  const legBL = buildWolfLeg(-0.17, -0.40, false);
+  const legBR = buildWolfLeg(0.17, -0.40, false);
+
+  let walkPhase = 0;
+  let breathPhase = 0;
+
+  return {
+    group,
+    update: (dt: number, state?: string) => {
+      breathPhase += dt * 2.2;
+      torsoMesh.scale.x = 1.0 + Math.sin(breathPhase) * 0.03;
+      torsoMesh.scale.y = 1.0 + Math.sin(breathPhase) * 0.02;
+
+      const isMoving = state === 'CHASE' || state === 'IDLE_PATROL';
+      const speedMult = state === 'CHASE' ? 8.5 : 4.0;
+
+      if (isMoving) {
+        walkPhase += dt * speedMult;
+        const stride = Math.sin(walkPhase) * 0.42;
+        legFL.rotation.x = stride;
+        legFR.rotation.x = -stride;
+        legBL.rotation.x = -stride;
+        legBR.rotation.x = stride;
+        tailPivot.rotation.y = Math.sin(walkPhase * 0.5) * 0.25;
+      } else {
+        legFL.rotation.x *= 0.85;
+        legFR.rotation.x *= 0.85;
+        legBL.rotation.x *= 0.85;
+        legBR.rotation.x *= 0.85;
+        tailPivot.rotation.y = Math.sin(breathPhase) * 0.12;
+      }
+
+      if (state === 'ATTACK_WINDUP') {
+        group.position.y = approach(group.position.y, -0.12, 10, dt);
+        tailPivot.rotation.x = -0.35;
+        earL.rotation.x = -0.3;
+        earR.rotation.x = -0.3;
+      } else if (state === 'STAGGERED') {
+        group.position.y = approach(group.position.y, 0.05, 12, dt);
+        torsoMesh.rotation.z = Math.sin(breathPhase * 6.0) * 0.1;
+      } else {
+        group.position.y = approach(group.position.y, 0, 8, dt);
+        torsoMesh.rotation.z = 0;
+        earL.rotation.x = 0;
+        earR.rotation.x = 0;
+        tailPivot.rotation.x = 0;
+      }
+    },
+  };
+}
+
+/**
+ * Procedural Boss-Tier Skeletal Sentinel Model (Resonant to tan/cot)
+ * Features weathered bone ribcage, cranium, rusted claymore and round shield.
+ * Mobile triangle budget: <1,200 tris.
+ */
+export function createSkeletalSentinelModel(): MinionModelBundle {
+  const group = new THREE.Group();
+  group.name = 'skeletal_sentinel_rig';
+
+  // Procedural aged bone texture
+  const boneCanvas = new PixelCanvas(64, 64, [218, 212, 192]);
+  boneCanvas.shade((u, v) => {
+    const noise = valueNoise(u * 12, v * 12) * 18;
+    const crack = Math.sin(u * Math.PI * 10 + v * 4) > 0.92 ? -35 : 0;
+    const shade = Math.max(0, Math.min(255, 210 + noise + crack));
+    return [shade, shade * 0.97, shade * 0.88];
+  });
+  const boneTex = boneCanvas.toTexture();
+  const boneMat = new THREE.MeshStandardMaterial({
+    map: boneTex,
+    roughness: 0.85,
+    metalness: 0.05,
+  });
+
+  const ironMat = new THREE.MeshStandardMaterial({
+    color: 0x5a5047,
+    roughness: 0.65,
+    metalness: 0.7,
+  });
+
+  const eyeFlameMat = new THREE.MeshBasicMaterial({ color: 0x34d399 });
+
+  // 1. Vertebrae column
+  const spinePts = [
+    v3(0, 0.82, 0),
+    v3(0, 1.04, 0.02),
+    v3(0, 1.24, 0),
+    v3(0, 1.44, -0.02),
+  ];
+  const spineGeo = sweepGeometry(spinePts, 5, {
+    radial: 5,
+    radius: () => 0.045,
+    capStart: true,
+    capEnd: true,
+  });
+  const spineMesh = new THREE.Mesh(spineGeo, boneMat);
+  group.add(spineMesh);
+
+  // 2. Ribcage arcs (3 swept pairs)
+  const ribPairs = [1.12, 1.22, 1.32];
+  ribPairs.forEach((ry, idx) => {
+    const width = 0.16 + (1 - Math.abs(idx - 1) * 0.3) * 0.06;
+    const leftArc = sweepGeometry([v3(0, ry, -0.02), v3(-width, ry - 0.03, 0.08), v3(0, ry - 0.06, 0.15)], 4, {
+      radial: 4,
+      radius: () => 0.022,
+      capStart: true,
+      capEnd: true,
+    });
+    const rightArc = sweepGeometry([v3(0, ry, -0.02), v3(width, ry - 0.03, 0.08), v3(0, ry - 0.06, 0.15)], 4, {
+      radial: 4,
+      radius: () => 0.022,
+      capStart: true,
+      capEnd: true,
+    });
+    group.add(new THREE.Mesh(leftArc, boneMat));
+    group.add(new THREE.Mesh(rightArc, boneMat));
+  });
+
+  // Pelvis cradle
+  const pelvisGeo = sweepGeometry([v3(-0.16, 0.86, 0), v3(0, 0.80, 0.06), v3(0.16, 0.86, 0)], 4, {
+    radial: 4,
+    radius: () => 0.05,
+    capStart: true,
+    capEnd: true,
+  });
+  group.add(new THREE.Mesh(pelvisGeo, boneMat));
+
+  // 3. Cranium with hollow eye sockets and glowing flames
+  const craniumGroup = new THREE.Group();
+  craniumGroup.position.set(0, 1.54, 0);
+
+  const craniumGeo = new THREE.IcosahedronGeometry(0.16, 1);
+  const craniumMesh = new THREE.Mesh(craniumGeo, boneMat);
+  craniumMesh.scale.set(0.9, 1.05, 1.0);
+  craniumGroup.add(craniumMesh);
+
+  // Jaw
+  const jawGeo = new THREE.BoxGeometry(0.14, 0.08, 0.16);
+  const jaw = new THREE.Mesh(jawGeo, boneMat);
+  jaw.position.set(0, -0.12, 0.06);
+  craniumGroup.add(jaw);
+
+  // Eye flame embers
+  const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.028, 4, 4), eyeFlameMat);
+  eyeL.position.set(-0.055, 0.02, 0.14);
+  craniumGroup.add(eyeL);
+
+  const eyeR = new THREE.Mesh(new THREE.SphereGeometry(0.028, 4, 4), eyeFlameMat);
+  eyeR.position.set(0.055, 0.02, 0.14);
+  craniumGroup.add(eyeR);
+
+  group.add(craniumGroup);
+
+  // 4. Articulated Legs
+  const buildSkeletonLeg = (ox: number) => {
+    const pivot = new THREE.Group();
+    pivot.position.set(ox, 0.80, 0);
+
+    // Femur
+    const femurGeo = taperTube([v3(0, 0, 0), v3(0, -0.40, 0)], 0.04, 0.035, 5);
+    const femur = new THREE.Mesh(femurGeo, boneMat);
+    pivot.add(femur);
+
+    // Tibia & fibula
+    const tibiaGeo = taperTube([v3(0, -0.40, 0), v3(0, -0.80, 0)], 0.035, 0.03, 5);
+    const tibia = new THREE.Mesh(tibiaGeo, boneMat);
+    pivot.add(tibia);
+
+    // Bony foot
+    const foot = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.04, 0.16), boneMat);
+    foot.position.set(0, -0.78, 0.06);
+    pivot.add(foot);
+
+    group.add(pivot);
+    return pivot;
+  };
+
+  const legL = buildSkeletonLeg(-0.14);
+  const legR = buildSkeletonLeg(0.14);
+
+  // 5. Left Arm with Round Shield
+  const armL = new THREE.Group();
+  armL.position.set(-0.24, 1.38, 0);
+  const armLGeo = taperTube([v3(0, 0, 0), v3(0, -0.42, 0.10)], 0.038, 0.03, 5);
+  armL.add(new THREE.Mesh(armLGeo, boneMat));
+
+  // Round shield with green tangent rune rim
+  const shield = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.04, 10), ironMat);
+  shield.rotation.x = Math.PI * 0.5;
+  shield.position.set(-0.06, -0.40, 0.18);
+  armL.add(shield);
+
+  const shieldBoss = new THREE.Mesh(new THREE.SphereGeometry(0.09, 6, 6), ironMat);
+  shieldBoss.position.set(-0.06, -0.40, 0.22);
+  armL.add(shieldBoss);
+  group.add(armL);
+
+  // 6. Right Arm with Rusted Claymore
+  const armR = new THREE.Group();
+  armR.position.set(0.24, 1.38, 0);
+  const armRGeo = taperTube([v3(0, 0, 0), v3(0, -0.42, 0.10)], 0.038, 0.03, 5);
+  armR.add(new THREE.Mesh(armRGeo, boneMat));
+
+  // Claymore
+  const swordGroup = new THREE.Group();
+  swordGroup.position.set(0, -0.42, 0.12);
+  swordGroup.rotation.x = -Math.PI * 0.25;
+
+  const hilt = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.22, 5), ironMat);
+  hilt.position.y = -0.10;
+  swordGroup.add(hilt);
+
+  const guard = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.04, 0.05), ironMat);
+  guard.position.y = 0.02;
+  swordGroup.add(guard);
+
+  const blade = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.92, 0.02), ironMat);
+  blade.position.y = 0.50;
+  swordGroup.add(blade);
+
+  armR.add(swordGroup);
+  group.add(armR);
+
+  let marchPhase = 0;
+
+  return {
+    group,
+    update: (dt: number, state?: string) => {
+      const isMoving = state === 'CHASE' || state === 'IDLE_PATROL';
+      const speedMult = state === 'CHASE' ? 6.5 : 3.5;
+
+      if (isMoving) {
+        marchPhase += dt * speedMult;
+        const stride = Math.sin(marchPhase) * 0.44;
+        legL.rotation.x = stride;
+        legR.rotation.x = -stride;
+        armL.rotation.x = -stride * 0.6;
+        armR.rotation.x = stride * 0.6;
+        craniumGroup.rotation.y = Math.sin(marchPhase * 0.5) * 0.15;
+      } else {
+        legL.rotation.x *= 0.85;
+        legR.rotation.x *= 0.85;
+        armL.rotation.x = approach(armL.rotation.x, 0, 6, dt);
+        armR.rotation.x = approach(armR.rotation.x, 0, 6, dt);
+        craniumGroup.rotation.y *= 0.9;
+      }
+
+      if (state === 'ATTACK_WINDUP') {
+        // Raise claymore overhead
+        armR.rotation.x = approach(armR.rotation.x, -Math.PI * 0.75, 12, dt);
+        armL.rotation.x = approach(armL.rotation.x, -Math.PI * 0.25, 10, dt);
+        craniumGroup.rotation.x = -0.2;
+      } else if (state === 'STAGGERED') {
+        armR.rotation.x = approach(armR.rotation.x, Math.PI * 0.35, 14, dt);
+        armL.rotation.x = approach(armL.rotation.x, -Math.PI * 0.45, 14, dt);
+        group.rotation.x = approach(group.rotation.x, -0.25, 10, dt);
+      } else {
+        group.rotation.x = approach(group.rotation.x, 0, 8, dt);
+        craniumGroup.rotation.x = 0;
+      }
+    },
+  };
+}
+
+/**
+ * Procedural Boss-Tier Drake Wyrmling Model (Resonant to sec/csc)
+ * Features serpentine neck, horned head, swept bat wings, and tail barb.
+ * Mobile triangle budget: <1,200 tris.
+ */
+export function createDrakeWyrmlingModel(): MinionModelBundle {
+  const group = new THREE.Group();
+  group.name = 'drake_wyrmling_rig';
+
+  // Procedural ember scales texture
+  const scaleCanvas = new PixelCanvas(64, 64, [180, 83, 9]);
+  scaleCanvas.shade((u, v) => {
+    const noise = valueNoise(u * 10, v * 10) * 24;
+    const pat = Math.sin(u * Math.PI * 14) * Math.cos(v * Math.PI * 14) * 20;
+    const r = Math.max(0, Math.min(255, 175 + noise + pat));
+    const g = Math.max(0, Math.min(255, 75 + noise * 0.6 + pat * 0.5));
+    const b = Math.max(0, Math.min(255, 12 + noise * 0.2));
+    return [r, g, b];
+  });
+  const scaleTex = scaleCanvas.toTexture();
+  const scaleMat = new THREE.MeshStandardMaterial({
+    map: scaleTex,
+    roughness: 0.55,
+    metalness: 0.35,
+  });
+
+  const wingMat = new THREE.MeshStandardMaterial({
+    color: 0xb45309,
+    roughness: 0.65,
+    side: THREE.DoubleSide,
+  });
+
+  const eyeMat = new THREE.MeshBasicMaterial({ color: 0xf59e0b });
+  const hornMat = new THREE.MeshStandardMaterial({ color: 0x27272a, roughness: 0.4 });
+
+  // 1. Serpentine Torso and Neck Sweep
+  const bodyPts = [
+    v3(0, 0.44, -0.42),
+    v3(0, 0.58, -0.12),
+    v3(0, 0.72, 0.14),
+    v3(0, 0.94, 0.28),
+    v3(0, 1.14, 0.34),
+  ];
+  const bodyGeo = sweepGeometry(bodyPts, 8, {
+    radial: 6,
+    radius: (t) => lerpKeys([[0, 0.16], [0.35, 0.24], [0.7, 0.20], [1.0, 0.12]], t),
+    scaleX: () => 0.85,
+    scaleY: () => 1.05,
+    capStart: false,
+    capEnd: true,
+  });
+  const bodyMesh = new THREE.Mesh(bodyGeo, scaleMat);
+  bodyMesh.castShadow = true;
+  group.add(bodyMesh);
+
+  // 2. Horned Head
+  const headGroup = new THREE.Group();
+  headGroup.position.set(0, 1.14, 0.34);
+
+  const snoutPts = [v3(0, 0, 0), v3(0, -0.04, 0.22), v3(0, -0.08, 0.38)];
+  const snoutGeo = sweepGeometry(snoutPts, 3, {
+    radial: 5,
+    radius: (t) => lerpKeys([[0, 0.12], [0.5, 0.09], [1.0, 0.045]], t),
+    scaleX: () => 0.75,
+    capEnd: true,
+  });
+  headGroup.add(new THREE.Mesh(snoutGeo, scaleMat));
+
+  // Swept horns
+  const hornLPts = [v3(-0.08, 0.05, 0.02), v3(-0.13, 0.18, -0.10), v3(-0.16, 0.28, -0.22)];
+  headGroup.add(new THREE.Mesh(sweepGeometry(hornLPts, 3, { radial: 4, radius: (t) => lerpKeys([[0, 0.04], [1.0, 0.008]], t), capEnd: true }), hornMat));
+
+  const hornRPts = [v3(0.08, 0.05, 0.02), v3(0.13, 0.18, -0.10), v3(0.16, 0.28, -0.22)];
+  headGroup.add(new THREE.Mesh(sweepGeometry(hornRPts, 3, { radial: 4, radius: (t) => lerpKeys([[0, 0.04], [1.0, 0.008]], t), capEnd: true }), hornMat));
+
+  // Glowing amber eyes
+  const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.03, 4, 4), eyeMat);
+  eyeL.position.set(-0.075, 0.02, 0.16);
+  headGroup.add(eyeL);
+
+  const eyeR = new THREE.Mesh(new THREE.SphereGeometry(0.03, 4, 4), eyeMat);
+  eyeR.position.set(0.075, 0.02, 0.16);
+  headGroup.add(eyeR);
+
+  group.add(headGroup);
+
+  // 3. Swept Bat Wings (Articulated Pivots)
+  const buildBatWing = (isLeft: boolean) => {
+    const pivot = new THREE.Group();
+    pivot.position.set(isLeft ? -0.16 : 0.16, 0.72, 0.10);
+
+    // Wing arm bone
+    const armPts = [v3(0, 0, 0), v3(isLeft ? -0.42 : 0.42, 0.32, -0.05), v3(isLeft ? -0.85 : 0.85, 0.18, -0.12)];
+    const armGeo = sweepGeometry(armPts, 4, { radial: 4, radius: () => 0.035, capStart: true, capEnd: true });
+    pivot.add(new THREE.Mesh(armGeo, hornMat));
+
+    // Wing membrane ribbon
+    const membraneGeo = new THREE.BufferGeometry();
+    const s = isLeft ? -1 : 1;
+    const verts = new Float32Array([
+      0, 0, 0,
+      s * 0.42, 0.32, -0.05,
+      s * 0.35, -0.15, -0.18,
+
+      s * 0.42, 0.32, -0.05,
+      s * 0.85, 0.18, -0.12,
+      s * 0.65, -0.12, -0.22,
+
+      s * 0.42, 0.32, -0.05,
+      s * 0.65, -0.12, -0.22,
+      s * 0.35, -0.15, -0.18,
+    ]);
+    membraneGeo.setAttribute('position', new THREE.BufferAttribute(verts, 3));
+    membraneGeo.computeVertexNormals();
+    pivot.add(new THREE.Mesh(membraneGeo, wingMat));
+
+    group.add(pivot);
+    return pivot;
+  };
+
+  const wingL = buildBatWing(true);
+  const wingR = buildBatWing(false);
+
+  // 4. Swept Barbed Tail
+  const tailPivot = new THREE.Group();
+  tailPivot.position.set(0, 0.44, -0.42);
+  const tailPts = [
+    v3(0, 0, 0),
+    v3(0, 0.04, -0.28),
+    v3(0, -0.08, -0.56),
+    v3(0, -0.18, -0.82),
+  ];
+  const tailGeo = sweepGeometry(tailPts, 5, {
+    radial: 5,
+    radius: (t) => lerpKeys([[0, 0.10], [0.5, 0.06], [1.0, 0.02]], t),
+    capEnd: true,
+  });
+  tailPivot.add(new THREE.Mesh(tailGeo, scaleMat));
+
+  // Tail barb fin
+  const barb = new THREE.Mesh(new THREE.ConeGeometry(0.10, 0.24, 4), hornMat);
+  barb.position.set(0, -0.20, -0.92);
+  barb.rotation.x = Math.PI * 0.5;
+  tailPivot.add(barb);
+  group.add(tailPivot);
+
+  // 5. Raptor Legs
+  const buildRaptorLeg = (ox: number) => {
+    const p = new THREE.Group();
+    p.position.set(ox, 0.48, -0.08);
+
+    const legGeo = taperTube([v3(0, 0, 0), v3(0, -0.24, -0.04), v3(0, -0.48, 0.06)], 0.06, 0.035, 5);
+    p.add(new THREE.Mesh(legGeo, scaleMat));
+
+    // Taloned claws
+    const claw = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.04, 0.16), hornMat);
+    claw.position.set(0, -0.46, 0.10);
+    p.add(claw);
+
+    group.add(p);
+    return p;
+  };
+
+  const legL = buildRaptorLeg(-0.16);
+  const legR = buildRaptorLeg(0.16);
+
+  let flapPhase = 0;
+
+  return {
+    group,
+    update: (dt: number, state?: string) => {
+      const isMoving = state === 'CHASE' || state === 'IDLE_PATROL';
+      const flapRate = state === 'CHASE' ? 9.0 : 4.5;
+      flapPhase += dt * flapRate;
+
+      // Bat wing flap
+      const flap = Math.sin(flapPhase) * 0.48;
+      wingL.rotation.z = -flap;
+      wingR.rotation.z = flap;
+
+      tailPivot.rotation.y = Math.sin(flapPhase * 0.5) * 0.22;
+      headGroup.rotation.y = Math.sin(flapPhase * 0.4) * 0.12;
+
+      if (isMoving) {
+        const stride = Math.sin(flapPhase) * 0.35;
+        legL.rotation.x = stride;
+        legR.rotation.x = -stride;
+      } else {
+        legL.rotation.x *= 0.85;
+        legR.rotation.x *= 0.85;
+      }
+
+      if (state === 'ATTACK_WINDUP') {
+        headGroup.rotation.x = approach(headGroup.rotation.x, -0.45, 12, dt);
+        wingL.rotation.y = -0.4;
+        wingR.rotation.y = 0.4;
+      } else {
+        headGroup.rotation.x = approach(headGroup.rotation.x, 0, 8, dt);
+        wingL.rotation.y = 0;
+        wingR.rotation.y = 0;
+      }
+    },
+  };
+}
+
+/**
+ * Procedural Mithril Ore Vein Model
+ * Features weathered granite rock boulder with embedded glowing crystalline mithril spikes.
+ * Mobile triangle budget: <400 tris.
+ */
+export function createOreNodeModel(): HarvestableNodeModelBundle {
+  const group = new THREE.Group();
+  group.name = 'ore_node_model';
+
+  // Procedural stone texture
+  const stoneCanvas = new PixelCanvas(64, 64, [110, 110, 115]);
+  stoneCanvas.shade((u, v) => {
+    const n = valueNoise(u * 8, v * 8) * 22;
+    const s = Math.max(0, Math.min(255, 110 + n));
+    return [s, s, s * 1.05];
+  });
+  const stoneMat = new THREE.MeshStandardMaterial({
+    map: stoneCanvas.toTexture(),
+    roughness: 0.9,
+    metalness: 0.15,
+  });
+
+  const crystalMat = new THREE.MeshStandardMaterial({
+    color: 0x38bdf8,
+    emissive: 0x0284c7,
+    emissiveIntensity: 0.85,
+    roughness: 0.2,
+    metalness: 0.85,
+  });
+
+  // 1. Faceted granite rock boulder base sitting flush at ground
+  const rockGeo = new THREE.DodecahedronGeometry(0.70, 0);
+  const rock = new THREE.Mesh(rockGeo, stoneMat);
+  rock.position.y = 0.40;
+  rock.scale.set(1.2, 0.8, 1.0);
+  rock.castShadow = true;
+  group.add(rock);
+
+  // 2. Cluster of glowing mithril crystal spikes
+  const crystalCluster = new THREE.Group();
+  crystalCluster.position.set(0, 0.45, 0);
+
+  const crystalConfigs = [
+    { pos: [0.12, 0.22, 0.08], rot: [0.25, 0.1, 0.35], h: 0.58, r: 0.08 },
+    { pos: [-0.15, 0.18, -0.06], rot: [-0.3, 0.4, -0.25], h: 0.48, r: 0.065 },
+    { pos: [0.04, 0.28, -0.14], rot: [-0.2, -0.3, 0.15], h: 0.52, r: 0.07 },
+    { pos: [-0.08, 0.15, 0.16], rot: [0.35, -0.2, -0.3], h: 0.42, r: 0.06 },
+  ];
+
+  crystalConfigs.forEach((cfg) => {
+    const geo = taperTube(
+      [v3(0, 0, 0), v3(0, cfg.h, 0)],
+      cfg.r,
+      0.015,
+      5,
+    );
+    const spike = new THREE.Mesh(geo, crystalMat);
+    spike.position.set(cfg.pos[0], cfg.pos[1], cfg.pos[2]);
+    spike.rotation.set(cfg.rot[0], cfg.rot[1], cfg.rot[2]);
+    spike.castShadow = true;
+    crystalCluster.add(spike);
+  });
+
+  group.add(crystalCluster);
+
+  let pulseTime = 0;
+  let isHarvested = false;
+
+  return {
+    group,
+    setHarvested: (harvested: boolean) => {
+      isHarvested = harvested;
+      crystalCluster.visible = !harvested;
+    },
+    update: (dt: number) => {
+      if (isHarvested) return;
+      pulseTime += dt * 2.8;
+      crystalMat.emissiveIntensity = 0.65 + Math.sin(pulseTime) * 0.28;
+    },
+  };
+}
+
+/**
+ * Procedural Moonbell Flora Gathering Node Model
+ * Features ground foliage cluster with glowing bioluminescent moonbell blossoms.
+ * Mobile triangle budget: <400 tris.
+ */
+export function createFloraNodeModel(): HarvestableNodeModelBundle {
+  const group = new THREE.Group();
+  group.name = 'flora_node_model';
+
+  const stemMat = new THREE.MeshStandardMaterial({
+    color: 0x2e6b3e,
+    roughness: 0.8,
+  });
+
+  const blossomMat = new THREE.MeshStandardMaterial({
+    color: 0xe0e7ff,
+    emissive: 0xa855f7,
+    emissiveIntensity: 0.85,
+    roughness: 0.35,
+    side: THREE.DoubleSide,
+  });
+
+  // 1. Ground leafy base rosette
+  const leafCount = 5;
+  for (let i = 0; i < leafCount; i++) {
+    const angle = (i / leafCount) * Math.PI * 2;
+    const leafGeo = sweepGeometry(
+      [v3(0, 0.04, 0), v3(Math.cos(angle) * 0.22, 0.08, Math.sin(angle) * 0.22), v3(Math.cos(angle) * 0.44, 0.02, Math.sin(angle) * 0.44)],
+      3,
+      { radial: 4, radius: (t) => lerpKeys([[0, 0.04], [0.5, 0.08], [1.0, 0.01]], t), scaleX: () => 0.25, capEnd: true }
+    );
+    group.add(new THREE.Mesh(leafGeo, stemMat));
+  }
+
+  // 2. Cluster of arching stalks with bell blossoms
+  const flowerCluster = new THREE.Group();
+
+  const stalkConfigs = [
+    { angle: 0.2, height: 0.65, lean: 0.22 },
+    { angle: 2.3, height: 0.58, lean: 0.26 },
+    { angle: 4.4, height: 0.72, lean: 0.20 },
+  ];
+
+  stalkConfigs.forEach((cfg) => {
+    const dx = Math.cos(cfg.angle) * cfg.lean;
+    const dz = Math.sin(cfg.angle) * cfg.lean;
+    const stalkGeo = sweepGeometry(
+      [v3(0, 0, 0), v3(dx * 0.5, cfg.height * 0.6, dz * 0.5), v3(dx, cfg.height, dz)],
+      4,
+      { radial: 4, radius: () => 0.025, capEnd: true }
+    );
+    flowerCluster.add(new THREE.Mesh(stalkGeo, stemMat));
+
+    // Drooping bell blossom
+    const bell = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.22, 6, 1, true), blossomMat);
+    bell.position.set(dx, cfg.height, dz);
+    bell.rotation.x = Math.PI * 0.85;
+    bell.rotation.y = cfg.angle;
+    flowerCluster.add(bell);
+
+    // Glowing inner stamen
+    const stamen = new THREE.Mesh(new THREE.SphereGeometry(0.04, 4, 4), blossomMat);
+    stamen.position.set(dx, cfg.height - 0.06, dz);
+    flowerCluster.add(stamen);
+  });
+
+  group.add(flowerCluster);
+
+  let swayTime = 0;
+  let isHarvested = false;
+
+  return {
+    group,
+    setHarvested: (harvested: boolean) => {
+      isHarvested = harvested;
+      flowerCluster.visible = !harvested;
+    },
+    update: (dt: number) => {
+      if (isHarvested) return;
+      swayTime += dt * 2.0;
+      flowerCluster.rotation.z = Math.sin(swayTime) * 0.05;
+      flowerCluster.rotation.x = Math.cos(swayTime * 0.8) * 0.04;
+      blossomMat.emissiveIntensity = 0.70 + Math.sin(swayTime * 1.5) * 0.25;
+    },
+  };
+}
+
+/**
+ * Procedural Trailhead Wooden Signpost Model
+ * Features weathered timber post with carved directional arrows pointing to boss sanctuaries.
+ * Mobile triangle budget: <350 tris.
+ */
+export function createTrailheadSignpost(_label?: string): THREE.Group {
+  const group = new THREE.Group();
+  group.name = 'trailhead_signpost';
+
+  // Timber texture
+  const woodCanvas = new PixelCanvas(64, 128, [130, 95, 65]);
+  woodCanvas.shade((u, v) => {
+    const grain = valueNoise(u * 16, v * 4) * 25;
+    const r = Math.max(0, Math.min(255, 125 + grain));
+    const g = Math.max(0, Math.min(255, 88 + grain * 0.8));
+    const b = Math.max(0, Math.min(255, 55 + grain * 0.6));
+    return [r, g, b];
+  });
+  const woodMat = new THREE.MeshStandardMaterial({
+    map: woodCanvas.toTexture(),
+    roughness: 0.85,
+    metalness: 0.05,
+  });
+
+  const ironMat = new THREE.MeshStandardMaterial({
+    color: 0x3f3f46,
+    roughness: 0.6,
+    metalness: 0.75,
+  });
+
+  // 1. Central vertical post (flush on terrain)
+  const postGeo = new THREE.CylinderGeometry(0.12, 0.14, 2.4, 8);
+  const post = new THREE.Mesh(postGeo, woodMat);
+  post.position.y = 1.2;
+  post.castShadow = true;
+  group.add(post);
+
+  // Pyramidal iron finial cap on top
+  const cap = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.18, 4), ironMat);
+  cap.position.y = 2.48;
+  cap.rotation.y = Math.PI * 0.25;
+  group.add(cap);
+
+  // 2. Three Directional Arrow Boards pointing to boss sanctuaries
+  // Helper to create an arrow board pointing forward (+Z) with arrowhead notch
+  const createArrowPlank = (rotY: number, posY: number) => {
+    const plank = new THREE.Group();
+    plank.position.y = posY;
+    plank.rotation.y = rotY;
+
+    // Main rectangular plank
+    const board = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.22, 0.95), woodMat);
+    board.position.z = 0.42;
+    board.castShadow = true;
+    plank.add(board);
+
+    // Arrowhead tip
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.26, 3), woodMat);
+    tip.position.z = 0.96;
+    tip.rotation.x = Math.PI * 0.5;
+    tip.rotation.y = Math.PI * 0.5;
+    tip.scale.set(0.65, 1.0, 1.0);
+    plank.add(tip);
+
+    // Iron mounting strap
+    const strap = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.06, 8), ironMat);
+    plank.add(strap);
+
+    group.add(plank);
+  };
+
+  // Northwest arrow: Whispering Glade (NW, ~ -45 deg)
+  createArrowPlank(-Math.PI * 0.28, 2.15);
+
+  // South arrow: Sunken Sun-Ruins (S, 180 deg)
+  createArrowPlank(Math.PI, 1.75);
+
+  // Northeast arrow: Skyridge Peak (NE, ~ 45 deg)
+  createArrowPlank(Math.PI * 0.28, 1.35);
+
+  // 3. Ground stone cairn plinth around the base
+  const cairn = new THREE.Mesh(new THREE.DodecahedronGeometry(0.42, 0), ironMat);
+  cairn.position.y = 0.20;
+  cairn.scale.set(1.4, 0.6, 1.4);
+  group.add(cairn);
+
+  return group;
 }

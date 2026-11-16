@@ -6,8 +6,12 @@ import {
 } from './dialogueData';
 import {
   allocateStatPoint,
+  canUpgradeFlask,
+  canUpgradeWeapon,
   completeQuest,
   startQuest,
+  upgradeFlask,
+  upgradeWeapon,
   type ProgressionState
 } from '../rpg/progressionSystem';
 
@@ -132,6 +136,32 @@ export class DialogueRunner {
             : 'Harmonics (+0.25x Resonance Multiplier)';
         this.callbacks.onShowToast(`ATTUNED: ${statName}`);
         this.callbacks.onStateChanged();
+      }
+    } else if (choice.action === 'upgrade_weapon') {
+      if (canUpgradeWeapon(this.progression)) {
+        upgradeWeapon(this.progression);
+        this.callbacks.onShowToast(`SPELLBLADE REFINED! Tier ${this.progression.weaponLevel} (+10% Attack Damage)`);
+        this.callbacks.onStateChanged();
+      } else {
+        const curTier = this.progression.weaponLevel ?? 1;
+        if (curTier >= 5) {
+          this.callbacks.onShowToast('Spellblade is already at Masterwork Tier 5 (Max)!');
+        } else {
+          this.callbacks.onShowToast('Need Materials: 2 Mithril Ore & 1 Ancient Bone required.');
+        }
+      }
+    } else if (choice.action === 'upgrade_flask') {
+      if (canUpgradeFlask(this.progression)) {
+        upgradeFlask(this.progression);
+        this.callbacks.onShowToast(`CRIMSON DRAUGHT BREWED! Max Flasks: ${this.progression.maxFlasks}`);
+        this.callbacks.onStateChanged();
+      } else {
+        const curFlasks = this.progression.maxFlasks ?? 3;
+        if (curFlasks >= 5) {
+          this.callbacks.onShowToast('Crimson Flask satchel is already at Maximum Capacity (5)!');
+        } else {
+          this.callbacks.onShowToast('Need Materials: 2 Moonbell Flora & 1 Phase Essence required.');
+        }
       }
     }
 

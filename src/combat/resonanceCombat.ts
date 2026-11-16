@@ -115,12 +115,28 @@ export function removeStatModifiersBySource(player: PlayerState, source: string)
 
 export function applyProgressionToPlayer(
   player: PlayerState,
-  stats: { maxHp: number; maxStamina: number; resonanceMultiplier: number },
+  stats: {
+    maxHp: number;
+    maxStamina: number;
+    resonanceMultiplier: number;
+    weaponDamageMultiplier?: number;
+    maxFlasks?: number;
+  },
 ): void {
   const oldMaxHp = player.baseStats.maxHp;
   player.baseStats.maxHp = stats.maxHp;
   player.baseStats.maxStamina = stats.maxStamina;
   player.resonanceBonusMultiplier = stats.resonanceMultiplier;
+  if (typeof stats.weaponDamageMultiplier === 'number') {
+    player.baseStats.attack = Math.round(28 * stats.weaponDamageMultiplier);
+  }
+  if (typeof stats.maxFlasks === 'number') {
+    // If player had 3 and upgraded to 4, increase current flasks by the difference
+    // otherwise preserve current flasks clamped to maxFlasks
+    if (player.flasksRemaining > stats.maxFlasks) {
+      player.flasksRemaining = stats.maxFlasks;
+    }
+  }
   if (stats.maxHp > oldMaxHp) {
     player.hp = Math.min(stats.maxHp, player.hp + (stats.maxHp - oldMaxHp));
   }

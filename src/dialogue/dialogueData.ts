@@ -7,7 +7,7 @@
 export interface DialogueChoice {
   text: string;
   nextNodeId?: string;
-  action?: 'accept_quest_1' | 'accept_quest_2' | 'accept_quest_3' | 'claim_quest' | 'open_stats' | 'close';
+  action?: 'accept_quest_1' | 'accept_quest_2' | 'accept_quest_3' | 'claim_quest' | 'open_stats' | 'upgrade_weapon' | 'upgrade_flask' | 'close';
   statToAllocate?: 'vigor' | 'endurance' | 'harmonics';
   requiresQuestState?: { questId: string; state: 'unstarted' | 'active' | 'completed' };
   requiresBossDefeat?: string;
@@ -213,6 +213,10 @@ export const DIALOGUE_NODES: Record<string, DialogueNode> = {
     text: 'Clang and resonance! Welcome to my forge, traveler. A blade is only as sharp as the math behind it. If your strike fails to match the ward\'s derivative, the harmonic backlash will jar your bones! Keep your sigil attuned, and strike true.',
     choices: [
       {
+        text: 'Refine Spellblade (Requires 2 Mithril Ore, 1 Ancient Bone) [+10% Damage]',
+        action: 'upgrade_weapon',
+      },
+      {
         text: 'What do you craft here, Theron?',
         nextNodeId: 'blacksmith_lore',
       },
@@ -228,8 +232,12 @@ export const DIALOGUE_NODES: Record<string, DialogueNode> = {
     speakerName: 'Theron the Smith',
     speakerTitle: 'Weaponsmith & Ward Refiner',
     speakerRole: 'blacksmith',
-    text: 'I temper steel using ore mined from the Skyridge foothills and cooled in the northern brook. Archmage Aurelius imbues the metal with astrolabe sigils so your blade can slice through trigonometric shields.',
+    text: 'I temper steel using ore mined from the Skyridge foothills and cooled in the northern brook. Archmage Aurelius imbues the metal with astrolabe sigils so your blade can slice through trigonometric shields. Bring me 2 Mithril Ore and 1 Ancient Bone from the wilds, and I will temper your Spellblade up to Tier 5 (+10% damage each time).',
     choices: [
+      {
+        text: 'Refine Spellblade now.',
+        action: 'upgrade_weapon',
+      },
       {
         text: 'Good to know. Farewell!',
         action: 'close',
@@ -244,6 +252,10 @@ export const DIALOGUE_NODES: Record<string, DialogueNode> = {
     speakerRole: 'herbalist',
     text: 'The meadow flowers are blooming with radiant energy today! If you are injured from your travels, drink from your Crimson Flask ([R] on keyboard or the flask icon). You can rest by the town fountain anytime to recover.',
     choices: [
+      {
+        text: 'Brew Crimson Draught (Requires 2 Moonbell, 1 Phase Essence) [+1 Max Flask]',
+        action: 'upgrade_flask',
+      },
       {
         text: 'What herbs grow around the valley?',
         nextNodeId: 'herbalist_lore',
@@ -260,8 +272,12 @@ export const DIALOGUE_NODES: Record<string, DialogueNode> = {
     speakerName: 'Lyra the Herbalist',
     speakerTitle: 'Flora Botanist & Potion Brewer',
     speakerRole: 'herbalist',
-    text: 'In the Whispering Glade to the northwest, moonlit bellflowers blossom in harmonic waves. Malakor\'s crypt to the north has sun-ruin moss, and near the dragon crags you can find amber sun-petals.',
+    text: 'In the Whispering Glade to the northwest, moonlit bellflowers blossom in harmonic waves. Malakor\'s crypt to the north has sun-ruin moss, and near the dragon crags you can find amber sun-petals. Bring me 2 Moonbell blossoms and 1 Phase Essence from the glade wolves, and I can expand your Crimson Flask satchel up to 5 charges.',
     choices: [
+      {
+        text: 'Brew Crimson Draught now.',
+        action: 'upgrade_flask',
+      },
       {
         text: 'Fascinating. Thank you, Lyra.',
         action: 'close',

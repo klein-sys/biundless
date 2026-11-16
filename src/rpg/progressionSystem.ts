@@ -13,12 +13,17 @@ export interface ProgressionState {
   harmonics: number;  // +0.25x Resonance Multiplier per point
   quests: Record<string, 'unstarted' | 'active' | 'completed'>;
   defeatedBosses: string[];
+  inventory: Record<string, number>;
+  weaponLevel: number; // default 1, max 5, +10% damage per level
+  maxFlasks: number;   // default 3, max 5
 }
 
 export interface EffectiveStats {
   maxHp: number;
   maxStamina: number;
   resonanceMultiplier: number;
+  weaponDamageMultiplier: number;
+  maxFlasks: number;
 }
 
 export const BASE_MAX_HP = 100;
@@ -31,6 +36,18 @@ export const BASE_RESONANCE_MULT = 1.0;
 export const MULT_PER_HARMONICS = 0.25;
 
 export const MAX_LEVEL = 10;
+export const MAX_WEAPON_LEVEL = 5;
+export const MAX_FLASK_CAPACITY = 5;
+
+export const WEAPON_UPGRADE_COST = {
+  mithrilOre: 2,
+  ancientBone: 1,
+} as const;
+
+export const FLASK_UPGRADE_COST = {
+  moonbell: 2,
+  phaseEssence: 1,
+} as const;
 
 // Cumulative XP required to reach each level (index = level)
 export const LEVEL_XP_THRESHOLDS: number[] = [
@@ -58,7 +75,10 @@ export function createDefaultProgression(): ProgressionState {
     endurance: 0,
     harmonics: 0,
     quests: {},
-    defeatedBosses: []
+    defeatedBosses: [],
+    inventory: {},
+    weaponLevel: 1,
+    maxFlasks: 3,
   };
 }
 
@@ -120,11 +140,62 @@ export function allocateStatPoint(
 }
 
 export function computeEffectiveStats(state: ProgressionState): EffectiveStats {
+  const weaponLevel = typeof state.weaponLevel === 'number' ? Math.max(1, Math.min(MAX_WEAPON_LEVEL, state.weaponLevel)) : 1;
+  const weaponDamageMultiplier = Number((1.0 + (weaponLevel - 1) * 0.10).toFixed(2));
   return {
     maxHp: BASE_MAX_HP + state.vigor * HP_PER_VIGOR,
     maxStamina: BASE_MAX_STAMINA + state.endurance * STAMINA_PER_ENDURANCE,
-    resonanceMultiplier: Number((BASE_RESONANCE_MULT + state.harmonics * MULT_PER_HARMONICS).toFixed(2))
+    resonanceMultiplier: Number((BASE_RESONANCE_MULT + state.harmonics * MULT_PER_HARMONICS).toFixed(2)),
+    weaponDamageMultiplier,
+    maxFlasks: typeof state.maxFlasks === 'number' ? Math.max(3, Math.min(MAX_FLASK_CAPACITY, state.maxFlasks)) : 3,
   };
+}
+
+export function addInventoryItem(state: ProgressionState, item: string, count: number = 1): number {
+  if (!state.inventory) {
+    state.inventory = {};
+  }
+  const current = state.inventory[item] ?? 0;
+  const next = Math.max(0, current + count);
+  state.inventory[item] = next;
+  return next;
+}
+
+export function getInventoryCount(state: ProgressionState, item: string): number {
+  if (!state.inventory) return 0;
+  return state.inventory[item] ?? 0;
+}
+
+export function canUpgradeWeapon(state: ProgressionState): boolean {
+  const currentLevel = typeof state.weaponLevel === 'number' ? state.weaponLevel : 1;
+  if (currentLevel >= MAX_WEAPON_LEVEL) return false;
+  const ore = getInventoryCount(state, 'mithrilOre');
+  const bone = getInventoryCount(state, 'ancientBone');
+  return ore >= WEAPON_UPGRADE_COST.mithrilOre && bone >= WEAPON_UPGRADE_COST.ancientBone;
+}
+
+export function upgradeWeapon(state: ProgressionState): boolean {
+  if (!canUpgradeWeapon(state)) return false;
+  state.inventory['mithrilOre'] = (state.inventory['mithrilOre'] ?? 0) - WEAPON_UPGRADE_COST.mithrilOre;
+  state.inventory['ancientBone'] = (state.inventory['ancientBone'] ?? 0) - WEAPON_UPGRADE_COST.ancientBone;
+  state.weaponLevel = (state.weaponLevel ?? 1) + 1;
+  return true;
+}
+
+export function canUpgradeFlask(state: ProgressionState): boolean {
+  const currentFlasks = typeof state.maxFlasks === 'number' ? state.maxFlasks : 3;
+  if (currentFlasks >= MAX_FLASK_CAPACITY) return false;
+  const flora = getInventoryCount(state, 'moonbell');
+  const essence = getInventoryCount(state, 'phaseEssence');
+  return flora >= FLASK_UPGRADE_COST.moonbell && essence >= FLASK_UPGRADE_COST.phaseEssence;
+}
+
+export function upgradeFlask(state: ProgressionState): boolean {
+  if (!canUpgradeFlask(state)) return false;
+  state.inventory['moonbell'] = (state.inventory['moonbell'] ?? 0) - FLASK_UPGRADE_COST.moonbell;
+  state.inventory['phaseEssence'] = (state.inventory['phaseEssence'] ?? 0) - FLASK_UPGRADE_COST.phaseEssence;
+  state.maxFlasks = (state.maxFlasks ?? 3) + 1;
+  return true;
 }
 
 export function startQuest(state: ProgressionState, questId: string): boolean {
@@ -174,7 +245,10 @@ export function loadProgression(): ProgressionState {
           endurance: typeof parsed.endurance === 'number' ? Math.max(0, parsed.endurance) : 0,
           harmonics: typeof parsed.harmonics === 'number' ? Math.max(0, parsed.harmonics) : 0,
           quests: typeof parsed.quests === 'object' && parsed.quests ? parsed.quests : {},
-          defeatedBosses: Array.isArray(parsed.defeatedBosses) ? parsed.defeatedBosses : []
+          defeatedBosses: Array.isArray(parsed.defeatedBosses) ? parsed.defeatedBosses : [],
+          inventory: typeof parsed.inventory === 'object' && parsed.inventory ? parsed.inventory : {},
+          weaponLevel: typeof parsed.weaponLevel === 'number' ? Math.max(1, Math.min(MAX_WEAPON_LEVEL, parsed.weaponLevel)) : 1,
+          maxFlasks: typeof parsed.maxFlasks === 'number' ? Math.max(3, Math.min(MAX_FLASK_CAPACITY, parsed.maxFlasks)) : 3,
         };
       }
     }

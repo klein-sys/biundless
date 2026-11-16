@@ -39,10 +39,15 @@ import {
 } from '../math/trigDerivatives';
 import { GameUI, type TelemetrySnapshot } from '../ui/GameUI';
 import {
+  GATHERING_NODES,
   getRegionAt,
   getTerrainHeight,
   LANDMARK_BY_ID,
+  TRAILHEAD_SIGNPOSTS,
+  WILD_MINION_SPAWNS,
   WORLD_PLAYABLE_RADIUS,
+  type GatheringNodeDefinition,
+  type TrailheadSignpostDefinition,
 } from '../world/SunlitValley';
 import {
   loadSettings,
@@ -53,17 +58,22 @@ import {
 import {
   createArenaEnvironment,
   createBossModel,
+  createFloraNodeModel,
+  createOreNodeModel,
   createPlayerModel,
   createSolsticeHavenVillage,
   createTangentArcVisual,
+  createTrailheadSignpost,
   type ArenaBundle,
   type BossRig,
+  type HarvestableNodeModelBundle,
   type InteractiveNpcEntity,
   type PlayerRig,
   type SolsticeHavenBundle,
   type TangentArcVisual,
 } from './ProceduralModels';
 import {
+  addInventoryItem,
   computeEffectiveStats,
   loadProgression,
   recordBossDefeat,
@@ -71,6 +81,16 @@ import {
   saveProgression,
   type ProgressionState,
 } from '../rpg/progressionSystem';
+import {
+  applyDamageToMinion,
+  buildMinionVisuals,
+  createMinionRuntime,
+  MINION_CONFIGS,
+  respawnMinion,
+  stepMinionEntity,
+  type MinionRuntime,
+  type MinionTickCallbacks,
+} from '../entities/MinionEntities';
 import { DialogueRunner } from '../dialogue/dialogueRunner';
 import type { DialogueChoice } from '../dialogue/dialogueData';
 
@@ -117,6 +137,28 @@ export class GameEngine {
   private progression: ProgressionState;
   private dialogueRunner: DialogueRunner;
   private nearbyNpc: InteractiveNpcEntity | null = null;
+  private readonly gatheringNodes: {
+    readonly def: GatheringNodeDefinition;
+    readonly modelBundle: HarvestableNodeModelBundle;
+    harvested: boolean;
+  }[] = [];
+  private readonly signposts: {
+    readonly def: TrailheadSignpostDefinition;
+    readonly group: THREE.Group;
+  }[] = [];
+  private nearbyGatherNode: {
+    readonly def: GatheringNodeDefinition;
+    readonly modelBundle: HarvestableNodeModelBundle;
+    harvested: boolean;
+  } | null = null;
+  private nearbySignpost: {
+    readonly def: TrailheadSignpostDefinition;
+    readonly group: THREE.Group;
+  } | null = null;
+
+  // Wild Minions
+  private readonly minions: MinionRuntime[] = [];
+  private readonly minionCallbacks: MinionTickCallbacks;
   private playerPos = new THREE.Vector3(0, 0, 4);
   private playerVelocityY = 0;
   private isGrounded = true;
@@ -278,6 +320,60 @@ export class GameEngine {
       const rt = this.bossRuntimes[id];
       rig.root.position.set(rt.x, rt.y, rt.z);
       this.scene.add(rig.root);
+    }
+
+    // Initialize Wild Gathering Nodes, Signposts & Minions
+    this.minionCallbacks = {
+      onDamagePlayer: (damage) => {
+        const dealt = applyDamageToPlayer(this.player, damage);
+        if (dealt > 0) {
+          this.cameraCtrl.addTrauma(0.35);
+          this.audio.playBacklash();
+          this.ui.showToast(`WILD STRIKE! -${dealt} HP`);
+        }
+      },
+      onMinionDefeated: (minion, wasResonant, lootItem, lootCount) => {
+        addInventoryItem(this.progression, lootItem, lootCount);
+        saveProgression(this.progression);
+        const name = MINION_CONFIGS[minion.minionType].lootItemName;
+        this.vfx.spawnBurst(
+          new THREE.Vector3(minion.x, minion.y + 1.2, minion.z),
+          wasResonant ? 0x38bdf8 : 0xf5d48a,
+          18,
+          6.0,
+          0.45
+        );
+        this.ui.showToast(`${wasResonant ? 'CRITICAL RESONANCE! ' : ''}+${lootCount} ${name}!`);
+      },
+    };
+
+    for (const def of GATHERING_NODES) {
+      const modelBundle = def.type === 'mithrilOre' ? createOreNodeModel() : createFloraNodeModel();
+      modelBundle.group.position.set(def.x, getTerrainHeight(def.x, def.z), def.z);
+      this.scene.add(modelBundle.group);
+      this.gatheringNodes.push({ def, modelBundle, harvested: false });
+    }
+
+    for (const def of TRAILHEAD_SIGNPOSTS) {
+      const group = createTrailheadSignpost(def.label);
+      group.position.set(def.x, getTerrainHeight(def.x, def.z), def.z);
+      group.rotation.y = def.yaw;
+      this.scene.add(group);
+      this.signposts.push({ def, group });
+    }
+
+    for (const spawn of WILD_MINION_SPAWNS) {
+      const minion = createMinionRuntime(
+        spawn.id,
+        spawn.type,
+        spawn.homeX,
+        spawn.homeZ,
+        spawn.patrolRadius,
+        spawn.leashRadius
+      );
+      const visuals = buildMinionVisuals(minion);
+      this.scene.add(visuals);
+      this.minions.push(minion);
     }
 
     this.input = new InputManager(canvas, {
@@ -602,6 +698,7 @@ export class GameEngine {
       this.activeBossId = null;
       this.tangentArc.group.visible = false;
       this.cameraCtrl.lockedOn = false;
+      this.restSanctuary();
       this.ui.showToast("WARPED: ADVENTURER'S PLAZA");
     } else {
       this.activeBossId = target;
@@ -1008,6 +1105,17 @@ export class GameEngine {
     // Update Solstice Haven Village animations
     this.village.update(dt);
 
+    // Update Gathering Nodes & Wild Minions
+    for (const gn of this.gatheringNodes) {
+      gn.modelBundle.update(dt);
+    }
+    for (const minion of this.minions) {
+      if (minion.healthBarGroup) {
+        minion.healthBarGroup.quaternion.copy(this.camera.quaternion);
+      }
+      stepMinionEntity(minion, dt, this.playerPos, this.minionCallbacks);
+    }
+
     // Check NPC interaction proximity
     let foundNpc: InteractiveNpcEntity | null = null;
     for (const npc of this.village.interactiveNpcs) {
@@ -1018,10 +1126,49 @@ export class GameEngine {
       }
     }
     this.nearbyNpc = foundNpc;
-    if (this.nearbyNpc && !this.dialogueRunner.isOpen) {
-      this.ui.showInteractPrompt(`Talk to ${this.nearbyNpc.name}`);
-    } else if (!this.nearbyNpc && !this.dialogueRunner.isOpen) {
-      this.ui.hideInteractPrompt();
+
+    // Check Gathering Node proximity
+    let foundGather: (typeof this.gatheringNodes)[number] | null = null;
+    if (!this.nearbyNpc) {
+      for (const gn of this.gatheringNodes) {
+        if (gn.harvested) continue;
+        const d = Math.hypot(this.playerPos.x - gn.def.x, this.playerPos.z - gn.def.z);
+        if (d <= 2.8) {
+          foundGather = gn;
+          break;
+        }
+      }
+    }
+    this.nearbyGatherNode = foundGather;
+
+    // Check Trailhead Signpost proximity
+    let foundSign: (typeof this.signposts)[number] | null = null;
+    if (!this.nearbyNpc && !this.nearbyGatherNode) {
+      for (const sp of this.signposts) {
+        const d = Math.hypot(this.playerPos.x - sp.def.x, this.playerPos.z - sp.def.z);
+        if (d <= 2.8) {
+          foundSign = sp;
+          break;
+        }
+      }
+    }
+    this.nearbySignpost = foundSign;
+
+    const distToFountain = Math.hypot(this.playerPos.x, this.playerPos.z);
+    const nearFountain = distToFountain <= 3.4 && !this.nearbyNpc && !this.nearbyGatherNode && !this.nearbySignpost;
+
+    if (!this.dialogueRunner.isOpen) {
+      if (this.nearbyNpc) {
+        this.ui.showInteractPrompt(`Talk to ${this.nearbyNpc.name}`);
+      } else if (this.nearbyGatherNode) {
+        this.ui.showInteractPrompt(`Harvest ${this.nearbyGatherNode.def.name} [F]`);
+      } else if (this.nearbySignpost) {
+        this.ui.showInteractPrompt(`Read Trailhead Guide [F]`);
+      } else if (nearFountain) {
+        this.ui.showInteractPrompt(`Rest at Sanctuary Fountain [F]`);
+      } else {
+        this.ui.hideInteractPrompt();
+      }
     }
 
     // Combat actions (only when not in dialogue)
@@ -1163,11 +1310,13 @@ export class GameEngine {
     );
 
     if (this.player.hp <= 0) {
+      this.audio.playBacklash();
       this.ui.showToast('RESONANCE SHATTERED — RESTORED AT ADVENTURER’S PLAZA');
       this.warpToLandmark('hub');
       this.player.hp = computeEffectiveStat(this.player, 'maxHp');
       this.player.stamina = computeEffectiveStat(this.player, 'maxStamina');
-      this.player.flasksRemaining = 3;
+      this.player.flasksRemaining = this.progression.maxFlasks ?? 3;
+      this.restSanctuary();
     }
 
     this.uiUpdateCooldown -= realDt;
@@ -1235,6 +1384,31 @@ export class GameEngine {
     const sigilHex = new THREE.Color(SIGIL_BY_ID[this.player.selectedSigil].accentHex).getHex();
     const slashYaw = this.cameraCtrl.pov === 'first' ? this.cameraCtrl.yaw + Math.PI : this.playerYaw;
     this.vfx.spawnSlashArc(this.playerPos, slashYaw, this.player.comboStep, sigilHex);
+
+    // Check minion melee strikes in the open world
+    for (const minion of this.minions) {
+      if (minion.state === 'DEFEATED') continue;
+      const d = Math.hypot(minion.x - this.playerPos.x, minion.z - this.playerPos.z);
+      if (d <= 3.8) {
+        const rawDmg = computeEffectiveStat(this.player, 'attack');
+        const res = applyDamageToMinion(
+          minion,
+          rawDmg,
+          undefined,
+          1.0,
+          this.minionCallbacks
+        );
+        this.cameraCtrl.addTrauma(0.18);
+        this.vfx.spawnBurst(
+          new THREE.Vector3(minion.x, minion.y + 1.0, minion.z),
+          0xf5d48a,
+          12,
+          4.5,
+          0.32
+        );
+        this.ui.showToast(`STRIKE: ${res.damage}`);
+      }
+    }
 
     const activeBoss = this.getActiveBoss();
     if (!activeBoss || activeBoss.phase === 'DEFEATED' || activeBoss.phase === 'IDLE_GUARD') return;
@@ -1355,6 +1529,45 @@ export class GameEngine {
     }
   }
 
+  private resolvePlayerProjectileHitMinion(minion: MinionRuntime): void {
+    const rawAtk = computeEffectiveStat(this.player, 'attack');
+    const harmonicsMult = this.player.resonanceBonusMultiplier ?? 1.0;
+    const res = applyDamageToMinion(
+      minion,
+      rawAtk,
+      this.player.selectedSigil,
+      harmonicsMult,
+      this.minionCallbacks
+    );
+    const hitOrigin = new THREE.Vector3(minion.x, minion.y + 1.2, minion.z);
+    const sigilHex = new THREE.Color(SIGIL_BY_ID[this.player.selectedSigil].accentHex).getHex();
+
+    if (res.isResonant) {
+      this.audio.playWardShatter(true);
+      this.cameraCtrl.addTrauma(0.5);
+      this.hitStopRemaining = 0.06;
+      this.vfx.spawnBurst(hitOrigin, sigilHex, 22, 7.0, 0.45);
+      this.ui.showToast(`RESONANCE CRITICAL! ${res.damage} DMG (Instant Stagger)`);
+    } else {
+      this.cameraCtrl.addTrauma(0.2);
+      this.vfx.spawnBurst(hitOrigin, 0xf5d48a, 12, 5.0, 0.35);
+      this.ui.showToast(`SIGIL HIT: ${res.damage}`);
+    }
+  }
+
+  private restSanctuary(): void {
+    const maxHp = computeEffectiveStat(this.player, 'maxHp');
+    this.player.hp = maxHp;
+    this.player.flasksRemaining = this.progression.maxFlasks ?? 3;
+    for (const node of this.gatheringNodes) {
+      node.harvested = false;
+      node.modelBundle.setHarvested(false);
+    }
+    for (const minion of this.minions) {
+      respawnMinion(minion);
+    }
+  }
+
   private handleBossEvents(events: ReturnType<typeof stepBossAI>, boss: BossRuntime): void {
     const cfg = BOSS_CONFIGS[boss.id];
     for (const ev of events) {
@@ -1425,20 +1638,52 @@ export class GameEngine {
       this.closeDialogueAndRestoreControls();
       return;
     }
-    if (!this.nearbyNpc) return;
 
-    const node = this.dialogueRunner.startDialogue(this.nearbyNpc.role);
-    if (!node) return;
+    if (this.nearbyNpc) {
+      const node = this.dialogueRunner.startDialogue(this.nearbyNpc.role);
+      if (!node) return;
 
-    // Switch screen to cursor mode immediately: unlock pointer so user can easily click choices
-    this.input.setPointerLockAllowed(false);
-    this.input.exitPointerLock();
-    this.ui.setPointerHintVisible(false);
+      // Switch screen to cursor mode immediately: unlock pointer so user can easily click choices
+      this.input.setPointerLockAllowed(false);
+      this.input.exitPointerLock();
+      this.ui.setPointerHintVisible(false);
 
-    const choices = this.dialogueRunner.getAvailableChoices();
-    this.ui.openDialogue(node, choices, this.progression, (choice) => {
-      this.handleDialogueChoice(choice);
-    });
+      const choices = this.dialogueRunner.getAvailableChoices();
+      this.ui.openDialogue(node, choices, this.progression, (choice) => {
+        this.handleDialogueChoice(choice);
+      });
+      return;
+    }
+
+    if (this.nearbyGatherNode && !this.nearbyGatherNode.harvested) {
+      const node = this.nearbyGatherNode;
+      node.harvested = true;
+      node.modelBundle.setHarvested(true);
+      addInventoryItem(this.progression, node.def.type, 1);
+      saveProgression(this.progression);
+      this.vfx.spawnBurst(
+        new THREE.Vector3(node.def.x, getTerrainHeight(node.def.x, node.def.z) + 0.8, node.def.z),
+        0x38bdf8,
+        14,
+        4.5,
+        0.4
+      );
+      this.ui.showToast(`HARVESTED: +1 ${node.def.name}`);
+      return;
+    }
+
+    if (this.nearbySignpost) {
+      this.ui.showToast(this.nearbySignpost.def.label);
+      return;
+    }
+
+    const distToFountain = Math.hypot(this.playerPos.x, this.playerPos.z);
+    if (distToFountain <= 3.4) {
+      this.restSanctuary();
+      this.audio.playHeal();
+      this.ui.showToast('SANCTUARY REST: HP & FLASKS RESTORED · WILDS RESEEDED');
+      return;
+    }
   }
 
   private handleDialogueChoice(choice: DialogueChoice): void {
@@ -1498,6 +1743,19 @@ export class GameEngine {
           const dealt = applyDamageToPlayer(this.player, p.damage);
           if (dealt > 0) this.cameraCtrl.addTrauma(0.35);
           remove = true;
+        }
+      }
+
+      // Check minion resonance projectile collisions
+      if (p.fromPlayer && !remove) {
+        for (const minion of this.minions) {
+          if (minion.state === 'DEFEATED') continue;
+          const d = Math.hypot(p.mesh.position.x - minion.x, p.mesh.position.z - minion.z);
+          if (d < 2.2) {
+            this.resolvePlayerProjectileHitMinion(minion);
+            remove = true;
+            break;
+          }
         }
       }
 

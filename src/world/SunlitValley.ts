@@ -201,3 +201,78 @@ export function getRegionAt(x: number, z: number): BiomeLandmark | null {
   return null;
 }
 
+export interface GatheringNodeDefinition {
+  readonly id: string;
+  readonly type: 'mithrilOre' | 'moonbell';
+  readonly name: string;
+  readonly x: number;
+  readonly z: number;
+}
+
+export interface TrailheadSignpostDefinition {
+  readonly id: string;
+  readonly label: string;
+  readonly x: number;
+  readonly z: number;
+  readonly yaw: number;
+}
+
+export interface WildMinionSpawnDefinition {
+  readonly id: string;
+  readonly type: 'wolf' | 'skeleton' | 'drake';
+  readonly homeX: number;
+  readonly homeZ: number;
+  readonly patrolRadius: number;
+  readonly leashRadius: number;
+}
+
+export const GATHERING_NODES: readonly GatheringNodeDefinition[] = [
+  // Northwestern Trail to Whispering Glade (Witch)
+  { id: 'node_glade_flora_1', type: 'moonbell', name: 'Moonbell Flora', x: -18, z: -15 },
+  { id: 'node_glade_ore_1', type: 'mithrilOre', name: 'Mithril Ore Vein', x: -32, z: -26 },
+  { id: 'node_glade_flora_2', type: 'moonbell', name: 'Moonbell Flora', x: -42, z: -34 },
+
+  // Southern Trail to Sunken Sun-Ruins (Lich)
+  { id: 'node_ruins_ore_1', type: 'mithrilOre', name: 'Mithril Ore Vein', x: 5, z: 28 },
+  { id: 'node_ruins_flora_1', type: 'moonbell', name: 'Moonbell Flora', x: 8, z: 38 },
+  { id: 'node_ruins_ore_2', type: 'mithrilOre', name: 'Mithril Ore Vein', x: 10, z: 46 },
+
+  // Northeastern Trail to Skyridge Peak (Dragon)
+  { id: 'node_peak_ore_1', type: 'mithrilOre', name: 'Mithril Ore Vein', x: 20, z: -20 },
+  { id: 'node_peak_flora_1', type: 'moonbell', name: 'Moonbell Flora', x: 32, z: -32 },
+  { id: 'node_peak_ore_2', type: 'mithrilOre', name: 'Mithril Ore Vein', x: 40, z: -40 },
+];
+
+export const TRAILHEAD_SIGNPOSTS: readonly TrailheadSignpostDefinition[] = [
+  // Outside South Gate (0, 22.5) pointing towards Sunken Sun-Ruins
+  {
+    id: 'signpost_south_gate',
+    label: 'Trailhead Guide: Sunken Sun-Ruins (S) · Solstice Haven (N)',
+    x: 2.8,
+    z: 25.5,
+    yaw: 0,
+  },
+  // Outside North Gate (0, -22.5) pointing towards Whispering Glade & Skyridge Peak
+  {
+    id: 'signpost_north_gate',
+    label: 'Trailhead Guide: Whispering Glade (NW) · Skyridge Peak (NE)',
+    x: 3.2,
+    z: -25.5,
+    yaw: Math.PI,
+  },
+];
+
+export const WILD_MINION_SPAWNS: readonly WildMinionSpawnDefinition[] = [
+  // Phase Wolves guarding the Whispering Glade wilderness trail
+  { id: 'wolf_glade_1', type: 'wolf', homeX: -26, homeZ: -22, patrolRadius: 6.0, leashRadius: 14.0 },
+  { id: 'wolf_glade_2', type: 'wolf', homeX: -38, homeZ: -30, patrolRadius: 6.0, leashRadius: 14.0 },
+
+  // Skeletal Sentinels guarding the Sunken Sun-Ruins approaches
+  { id: 'skel_ruins_1', type: 'skeleton', homeX: 6, homeZ: 34, patrolRadius: 5.5, leashRadius: 14.0 },
+  { id: 'skel_ruins_2', type: 'skeleton', homeX: 10, homeZ: 44, patrolRadius: 5.5, leashRadius: 14.0 },
+
+  // Drake Wyrmlings patrolling the Skyridge Peak alpine foothills
+  { id: 'drake_peak_1', type: 'drake', homeX: 26, homeZ: -26, patrolRadius: 6.5, leashRadius: 14.0 },
+  { id: 'drake_peak_2', type: 'drake', homeX: 38, homeZ: -38, patrolRadius: 6.5, leashRadius: 14.0 },
+];
+

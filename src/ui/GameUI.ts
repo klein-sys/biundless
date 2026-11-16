@@ -26,6 +26,7 @@ import {
 import type { BiomeLandmark } from '../world/SunlitValley';
 import type { DialogueChoice, DialogueNode } from '../dialogue/dialogueData';
 import {
+  getInventoryCount,
   getLevelProgressFraction,
   hasSavedProgression,
   getProgressionSummary,
@@ -1074,6 +1075,13 @@ export class GameUI {
     const progSummary = progression ? getProgressionSummary(progression) : 'Adventurer';
     const xpPct = progression ? (getLevelProgressFraction(progression) * 100).toFixed(0) : '0';
     const harmonicsMult = progression ? (1.0 + progression.harmonics * 0.25).toFixed(2) : '1.00';
+    const weaponTier = progression?.weaponLevel ?? 1;
+    const maxFlasks = progression?.maxFlasks ?? 3;
+    const mithrilCount = progression ? getInventoryCount(progression, 'mithrilOre') : 0;
+    const moonbellCount = progression ? getInventoryCount(progression, 'moonbell') : 0;
+    const essenceCount = progression ? getInventoryCount(progression, 'phaseEssence') : 0;
+    const boneCount = progression ? getInventoryCount(progression, 'ancientBone') : 0;
+    const scaleCount = progression ? getInventoryCount(progression, 'drakeScale') : 0;
 
     this.settingsModal.innerHTML = `
       <div class="adventure-modal settings-card pause-modal">
@@ -1098,7 +1106,7 @@ export class GameUI {
             <div class="hero-pause-stats">
               <div class="stat-pill"><span class="stat-lbl">HP:</span> <strong>${player ? Math.max(0, player.hp) : 160}/${maxHp}</strong></div>
               <div class="stat-pill"><span class="stat-lbl">Stamina:</span> <strong>${player ? Math.round(player.stamina) : 100}/${maxStam}</strong></div>
-              <div class="stat-pill"><span class="stat-lbl">Flasks:</span> <strong>${player ? player.flasksRemaining : 3}/3</strong></div>
+              <div class="stat-pill"><span class="stat-lbl">Flasks:</span> <strong>${player ? player.flasksRemaining : maxFlasks}/${maxFlasks}</strong></div>
               <div class="stat-pill"><span class="stat-lbl">Harmonics:</span> <strong>${harmonicsMult}×</strong></div>
             </div>
 
@@ -1109,6 +1117,51 @@ export class GameUI {
               </div>
               <div class="bar-pill xp-track-pause">
                 <div class="xp-fill" style="width: ${xpPct}%"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Adventurer Satchel Card -->
+          <div class="satchel-card">
+            <div class="satchel-header">
+              <div class="satchel-title">🎒 ADVENTURER SATCHEL</div>
+              <div class="satchel-tier">Spellblade Tier ${weaponTier} (+${(weaponTier - 1) * 10}% Dmg) · Flasks ${player ? player.flasksRemaining : maxFlasks}/${maxFlasks}</div>
+            </div>
+            <div class="satchel-grid">
+              <div class="satchel-item" title="Mithril Ore Vein">
+                <span class="item-icon">⛏️</span>
+                <div class="item-info">
+                  <span class="item-name">Mithril Ore</span>
+                  <span class="item-count">${mithrilCount}</span>
+                </div>
+              </div>
+              <div class="satchel-item" title="Moonbell Flora">
+                <span class="item-icon">🌸</span>
+                <div class="item-info">
+                  <span class="item-name">Moonbell Flora</span>
+                  <span class="item-count">${moonbellCount}</span>
+                </div>
+              </div>
+              <div class="satchel-item" title="Phase Wolf Essence">
+                <span class="item-icon">🐺</span>
+                <div class="item-info">
+                  <span class="item-name">Phase Essence</span>
+                  <span class="item-count">${essenceCount}</span>
+                </div>
+              </div>
+              <div class="satchel-item" title="Skeletal Ancient Bone">
+                <span class="item-icon">💀</span>
+                <div class="item-info">
+                  <span class="item-name">Ancient Bone</span>
+                  <span class="item-count">${boneCount}</span>
+                </div>
+              </div>
+              <div class="satchel-item" title="Drake Wyrmling Scale">
+                <span class="item-icon">🐉</span>
+                <div class="item-info">
+                  <span class="item-name">Drake Scale</span>
+                  <span class="item-count">${scaleCount}</span>
+                </div>
               </div>
             </div>
           </div>
