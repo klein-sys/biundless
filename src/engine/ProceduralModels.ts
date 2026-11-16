@@ -5044,96 +5044,234 @@ export function createSolsticeHavenVillage(): SolsticeHavenBundle {
     wGroup.position.set(initialPos.x, getTerrainHeight(initialPos.x, initialPos.z), initialPos.z);
 
     const skinMat = new THREE.MeshStandardMaterial({ color: 0xf2cead, roughness: 0.65 });
-    const tunicMat = new THREE.MeshStandardMaterial({ color: colorTunic, roughness: 0.7 });
-    const trimMat = new THREE.MeshStandardMaterial({ color: colorTrim, roughness: 0.5 });
-    const leatherMat = new THREE.MeshStandardMaterial({ color: 0x4a2e1b, roughness: 0.8 });
+    const tunicMat = new THREE.MeshStandardMaterial({ color: colorTunic, roughness: 0.72 });
+    const trimMat = new THREE.MeshStandardMaterial({ color: colorTrim, roughness: 0.45, metalness: 0.2 });
+    const leatherMat = new THREE.MeshStandardMaterial({ color: 0x4a2e1b, roughness: 0.75 });
+    const pantsMat = new THREE.MeshStandardMaterial({ color: 0x2b3442, roughness: 0.85 });
+    const bootMat = new THREE.MeshStandardMaterial({ color: 0x24180f, roughness: 0.68 });
+    const hairMat = new THREE.MeshStandardMaterial({ color: 0x3d2716, roughness: 0.75 });
+    const eyeMat = new THREE.MeshBasicMaterial({ color: 0x1e293b });
+    const eyeShineMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const browMat = new THREE.MeshStandardMaterial({ color: 0x2d1a0e, roughness: 0.8 });
+    const steelMat = new THREE.MeshStandardMaterial({ color: 0xd1d5db, roughness: 0.3, metalness: 0.82 });
+    const brassMat = new THREE.MeshStandardMaterial({ color: 0xd4af37, roughness: 0.25, metalness: 0.85 });
 
-    // Torso
-    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.62, 0.32), tunicMat);
+    // 1. Layered Tunic Torso & Belt
+    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.52, 0.3), tunicMat);
     torso.position.y = 1.05;
     torso.castShadow = true;
     wGroup.add(torso);
 
-    const belt = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.09, 0.34), leatherMat);
-    belt.position.y = 0.8;
+    // Flared Tunic Hem / Skirt
+    const skirt = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.31, 0.22, 8), tunicMat);
+    skirt.position.y = 0.74;
+    skirt.castShadow = true;
+    wGroup.add(skirt);
+
+    // Stitched Leather Belt & Metal Buckle
+    const belt = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.08, 0.32), leatherMat);
+    belt.position.y = 0.82;
     wGroup.add(belt);
 
-    // Head
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.18, 10, 8), skinMat);
-    head.position.y = 1.48;
-    head.castShadow = true;
-    wGroup.add(head);
+    const buckle = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.09, 0.34), brassMat);
+    buckle.position.y = 0.82;
+    wGroup.add(buckle);
 
-    // Headwear
+    // Guard Steel Breastplate
     if (hasHat === 'guard') {
-      const helm = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.32, 6), trimMat);
-      helm.position.y = 1.66;
-      wGroup.add(helm);
-    } else if (hasHat === 'hood') {
-      const hood = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 8, 0, Math.PI * 2, 0, Math.PI * 0.7), tunicMat);
-      hood.position.y = 1.5;
-      hood.rotation.x = -0.25;
-      wGroup.add(hood);
-    } else if (hasHat === 'circlet') {
-      const circlet = new THREE.Mesh(new THREE.TorusGeometry(0.19, 0.025, 6, 16), trimMat);
-      circlet.rotation.x = Math.PI * 0.45;
-      circlet.position.y = 1.54;
-      wGroup.add(circlet);
+      const breastplate = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.36, 0.14), steelMat);
+      breastplate.position.set(0, 1.08, 0.12);
+      breastplate.castShadow = true;
+      wGroup.add(breastplate);
     }
 
-    // Legs
+    // 2. Sculpted Head & Expressive Cel-Shaded Face
+    const headGroup = new THREE.Group();
+    headGroup.position.set(0, 1.44, 0);
+
+    const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.09, 0.12, 6), skinMat);
+    neck.position.y = -0.06;
+    headGroup.add(neck);
+
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.17, 10, 8), skinMat);
+    head.castShadow = true;
+    headGroup.add(head);
+
+    // Hair base
+    const hair = new THREE.Mesh(new THREE.SphereGeometry(0.18, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.62), hairMat);
+    hair.position.set(0, 0.02, -0.02);
+    headGroup.add(hair);
+
+    // Left and Right Eyes with Specular Shine
+    [-0.055, 0.055].forEach((ex) => {
+      const eye = new THREE.Mesh(new THREE.BoxGeometry(0.032, 0.028, 0.015), eyeMat);
+      eye.position.set(ex, 0.01, 0.155);
+      headGroup.add(eye);
+
+      const shine = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.01, 0.016), eyeShineMat);
+      shine.position.set(ex + 0.006, 0.016, 0.158);
+      headGroup.add(shine);
+
+      const brow = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.012, 0.015), browMat);
+      brow.position.set(ex, 0.045, 0.155);
+      brow.rotation.z = ex > 0 ? -0.1 : 0.1;
+      headGroup.add(brow);
+    });
+
+    // Elder beard if cane/scholar
+    if (accessory === 'cane') {
+      const beardMat = new THREE.MeshStandardMaterial({ color: 0xf1f5f9, roughness: 0.7 });
+      const beard = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.22, 5), beardMat);
+      beard.position.set(0, -0.12, 0.14);
+      beard.rotation.x = 0.2;
+      headGroup.add(beard);
+    }
+
+    // 3. Headwear & Hats
+    if (hasHat === 'guard') {
+      // Guard Morion / Crested Helmet
+      const helm = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.21, 0.24, 8), steelMat);
+      helm.position.y = 0.12;
+      headGroup.add(helm);
+
+      const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.24, 0.03, 8), steelMat);
+      brim.position.y = 0.02;
+      headGroup.add(brim);
+
+      const plume = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.22, 0.26), trimMat);
+      plume.position.set(0, 0.26, 0.02);
+      headGroup.add(plume);
+    } else if (hasHat === 'hood') {
+      const hood = new THREE.Mesh(new THREE.SphereGeometry(0.21, 8, 8, 0, Math.PI * 2, 0, Math.PI * 0.72), tunicMat);
+      hood.position.set(0, 0.04, -0.04);
+      hood.rotation.x = -0.22;
+      headGroup.add(hood);
+
+      const hoodTail = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.18, 4), tunicMat);
+      hoodTail.position.set(0, 0.08, -0.2);
+      hoodTail.rotation.x = -0.7;
+      headGroup.add(hoodTail);
+    } else if (hasHat === 'circlet') {
+      const circlet = new THREE.Mesh(new THREE.TorusGeometry(0.185, 0.022, 6, 16), brassMat);
+      circlet.rotation.x = Math.PI * 0.45;
+      circlet.position.y = 0.06;
+      headGroup.add(circlet);
+
+      const gem = new THREE.Mesh(new THREE.OctahedronGeometry(0.035, 0), trimMat);
+      gem.position.set(0, 0.06, 0.19);
+      headGroup.add(gem);
+    } else if (hasHat === 'none' && accessory === 'satchel') {
+      // Courier feathered cap
+      const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.18, 0.08, 8), tunicMat);
+      cap.position.set(0, 0.14, 0);
+      cap.rotation.z = -0.15;
+      headGroup.add(cap);
+
+      const feather = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.2, 0.06), trimMat);
+      feather.position.set(-0.16, 0.22, 0.05);
+      feather.rotation.z = 0.45;
+      headGroup.add(feather);
+    }
+
+    wGroup.add(headGroup);
+
+    // 4. Articulated Legs with Cuffed Grounded Boots
     const buildLeg = (offsetX: number) => {
       const p = new THREE.Group();
-      p.position.set(offsetX, 0.75, 0);
-      const legMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.07, 0.7, 6), leatherMat);
-      legMesh.position.y = -0.35;
-      legMesh.castShadow = true;
-      p.add(legMesh);
+      p.position.set(offsetX, 0.72, 0);
+
+      // Thigh in fitted breeches
+      const thigh = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.075, 0.38, 6), pantsMat);
+      thigh.position.y = -0.18;
+      thigh.castShadow = true;
+      p.add(thigh);
+
+      // Cuffed leather boot
+      const bootShaft = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.07, 0.32, 6), bootMat);
+      bootShaft.position.y = -0.48;
+      bootShaft.castShadow = true;
+      p.add(bootShaft);
+
+      // Boot turn-down cuff
+      const bootCuff = new THREE.Mesh(new THREE.CylinderGeometry(0.095, 0.08, 0.09, 6), bootMat);
+      bootCuff.position.y = -0.34;
+      p.add(bootCuff);
+
+      // Grounded Foot Sole (Sitting flush on terrain, base at y = 0)
+      const foot = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.11, 0.22), bootMat);
+      foot.position.set(0, -0.66, 0.04);
+      foot.receiveShadow = true;
+      p.add(foot);
+
       wGroup.add(p);
       return p;
     };
     const legL = buildLeg(-0.14);
     const legR = buildLeg(0.14);
 
-    // Arms
+    // 5. Articulated Arms with Cuffed Sleeves
     const buildArm = (offsetX: number) => {
       const p = new THREE.Group();
       p.position.set(offsetX, 1.25, 0);
-      const armMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.055, 0.55, 6), tunicMat);
-      armMesh.position.y = -0.25;
-      armMesh.castShadow = true;
-      p.add(armMesh);
+
+      const sleeve = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.058, 0.46, 6), tunicMat);
+      sleeve.position.y = -0.22;
+      sleeve.castShadow = true;
+      p.add(sleeve);
+
+      const cuff = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.065, 0.06, 6), trimMat);
+      cuff.position.y = -0.42;
+      p.add(cuff);
+
+      const hand = new THREE.Mesh(new THREE.SphereGeometry(0.048, 6, 6), skinMat);
+      hand.position.y = -0.48;
+      p.add(hand);
+
       wGroup.add(p);
       return p;
     };
-    const armL = buildArm(-0.3);
-    const armR = buildArm(0.3);
+    const armL = buildArm(-0.29);
+    const armR = buildArm(0.29);
 
     // Accessory
     if (accessory === 'spear') {
-      const spearPole = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 2.1, 6), leatherMat);
-      spearPole.position.set(0, -0.1, 0.2);
+      const spearPole = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 2.3, 6), leatherMat);
+      spearPole.position.set(0, 0.1, 0.2);
       spearPole.rotation.x = 0.15;
-      const spearTip = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.28, 4), trimMat);
-      spearTip.position.set(0, 1.05, 0.35);
-      armR.add(spearPole, spearTip);
+      const spearTip = new THREE.Mesh(new THREE.ConeGeometry(0.065, 0.32, 4), steelMat);
+      spearTip.position.set(0, 1.25, 0.37);
+      const pennon = new THREE.Mesh(new THREE.BoxGeometry(0.005, 0.14, 0.34), trimMat);
+      pennon.position.set(0, 1.05, 0.52);
+      armR.add(spearPole, spearTip, pennon);
     } else if (accessory === 'scroll') {
-      const scroll = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.32, 6), trimMat);
+      const scroll = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.32, 8), skinMat);
       scroll.position.set(0, -0.4, 0.15);
       scroll.rotation.z = Math.PI / 2;
-      armR.add(scroll);
+      const seal = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.06, 6), trimMat);
+      seal.position.set(0, -0.4, 0.19);
+      armR.add(scroll, seal);
     } else if (accessory === 'basket') {
       const basket = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.2, 0.28), leatherMat);
       basket.position.set(0, -0.35, 0.12);
+      const herbMat = new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.6 });
+      const herbs = new THREE.Mesh(new THREE.DodecahedronGeometry(0.08, 0), herbMat);
+      herbs.position.set(0, 0.1, 0);
+      basket.add(herbs);
       armL.add(basket);
     } else if (accessory === 'satchel') {
-      const satchel = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.22, 0.12), leatherMat);
-      satchel.position.set(0.15, 0.75, 0.18);
-      wGroup.add(satchel);
+      const satchel = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.2, 0.12), leatherMat);
+      satchel.position.set(0.18, 0.78, 0.16);
+      const strap = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.65, 0.34), leatherMat);
+      strap.position.set(0, 0.98, 0.05);
+      strap.rotation.z = -0.45;
+      wGroup.add(satchel, strap);
     } else if (accessory === 'cane') {
-      const cane = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.02, 1.2, 6), trimMat);
-      cane.position.set(0, -0.25, 0.18);
-      armR.add(cane);
+      const cane = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.018, 1.25, 6), leatherMat);
+      cane.position.set(0, -0.22, 0.18);
+      const handle = new THREE.Mesh(new THREE.TorusGeometry(0.05, 0.02, 6, 8, Math.PI), brassMat);
+      handle.position.set(0, 0.42, 0.21);
+      handle.rotation.y = Math.PI / 2;
+      armR.add(cane, handle);
     }
 
     group.add(wGroup);
