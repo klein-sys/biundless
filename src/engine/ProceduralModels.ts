@@ -20,7 +20,11 @@ import {
   createSkyDomeMaterial,
   createWaterStreamMaterial,
 } from './Shaders';
-import { alignSegmentDown, mergeStaticMeshes, solveTwoBoneArm } from './SculptKit';
+import {
+  alignSegmentDown,
+  mergeStaticMeshes,
+  solveTwoBoneArm,
+} from './SculptKit';
 import { createWhisperingGlade, type WhisperingGlade } from './WhisperingGlade';
 
 export { createBossModel, type BossAnimContext, type BossRig } from './BossModels';
@@ -4230,6 +4234,633 @@ export interface VillageObstacle {
   radius: number;
 }
 
+export interface CastleWallSection {
+  group: THREE.Group;
+  update?: (dt: number) => void;
+  obstacles: VillageObstacle[];
+}
+
+/**
+ * Creates an imposing fortified cylindrical Bastion Watchtower:
+ * - Battered stone plinth skirt sunk into meadow terrain
+ * - 12-sided ashlar masonry tower drum with slit embrasures
+ * - Corbeled machicolation overhang gallery
+ * - Crenelated battlements and stone parapet
+ * - Octagonal conical slate spire roof with apex brass finial
+ * - Dynamic animated silk banner pennant fluttering in the mountain breeze
+ */
+export function createTownBastionTower(opts: {
+  x: number;
+  z: number;
+  height?: number;
+  radius?: number;
+  bannerColor?: number;
+}): { group: THREE.Group; update: (dt: number) => void } {
+  const group = new THREE.Group();
+  group.name = `bastion_tower_${Math.round(opts.x)}_${Math.round(opts.z)}`;
+
+  const groundY = getTerrainHeight(opts.x, opts.z);
+  group.position.set(opts.x, groundY, opts.z);
+
+  const staticGroup = new THREE.Group();
+  staticGroup.name = 'bastion_static';
+  group.add(staticGroup);
+
+  const H = opts.height ?? 8.5;
+  const R = opts.radius ?? 2.35;
+  const bannerHex = opts.bannerColor ?? 0x8b1d24;
+
+  const stoneMat = new THREE.MeshStandardMaterial({
+    color: 0xc8c2b5,
+    roughness: 0.78,
+    metalness: 0.05,
+  });
+  const darkStoneMat = new THREE.MeshStandardMaterial({
+    color: 0x717b8c,
+    roughness: 0.82,
+    metalness: 0.08,
+  });
+  const slateRoofMat = new THREE.MeshStandardMaterial({
+    color: 0x2b394e,
+    roughness: 0.65,
+    metalness: 0.12,
+  });
+  const brassMat = new THREE.MeshStandardMaterial({
+    color: 0xd4af37,
+    metalness: 0.85,
+    roughness: 0.28,
+  });
+
+  // 1. Deep Battered Foundation Skirt (sunken into terrain for zero light gaps on sloped terrain)
+  const baseGeo = new THREE.CylinderGeometry(R * 1.06, R * 1.28, 1.8, 12);
+  const baseMesh = new THREE.Mesh(baseGeo, darkStoneMat);
+  baseMesh.position.y = -0.1;
+  baseMesh.castShadow = true;
+  baseMesh.receiveShadow = true;
+  staticGroup.add(baseMesh);
+
+  // 2. Tower Main Drum Body
+  const drumHeight = H - 1.4;
+  const drumGeo = new THREE.CylinderGeometry(R, R * 1.06, drumHeight, 12);
+  const drumMesh = new THREE.Mesh(drumGeo, stoneMat);
+  drumMesh.position.y = 0.8 + drumHeight * 0.5;
+  drumMesh.castShadow = true;
+  drumMesh.receiveShadow = true;
+  staticGroup.add(drumMesh);
+
+  // 3. Stringcourse Decorative Moldings
+  const band1 = new THREE.Mesh(new THREE.CylinderGeometry(R * 1.04, R * 1.04, 0.16, 12), darkStoneMat);
+  band1.position.y = 2.4;
+  staticGroup.add(band1);
+
+  const band2 = new THREE.Mesh(new THREE.CylinderGeometry(R * 1.04, R * 1.04, 0.16, 12), darkStoneMat);
+  band2.position.y = H - 2.2;
+  staticGroup.add(band2);
+
+  // 4. Machicolated Corbel Overhang Ring (12 stepped corbel brackets)
+  const corbelRingY = H - 1.2;
+  for (let i = 0; i < 12; i++) {
+    const ang = (i / 12) * Math.PI * 2;
+    const corbel = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.65, 0.48), darkStoneMat);
+    corbel.position.set(Math.sin(ang) * (R * 1.05), corbelRingY, Math.cos(ang) * (R * 1.05));
+    corbel.rotation.y = -ang;
+    corbel.castShadow = true;
+    staticGroup.add(corbel);
+  }
+
+  // 5. Parapet Observation Gallery Slab
+  const parapetFloor = new THREE.Mesh(new THREE.CylinderGeometry(R * 1.24, R * 1.18, 0.28, 12), darkStoneMat);
+  parapetFloor.position.y = H - 0.75;
+  staticGroup.add(parapetFloor);
+
+  // 6. Crenelated Parapet Merlons
+  for (let i = 0; i < 12; i += 2) {
+    const ang = (i / 12) * Math.PI * 2;
+    const merlon = new THREE.Mesh(new THREE.BoxGeometry(0.55, 1.05, 0.32), stoneMat);
+    merlon.position.set(Math.sin(ang) * (R * 1.18), H - 0.12, Math.cos(ang) * (R * 1.18));
+    merlon.rotation.y = -ang;
+    merlon.castShadow = true;
+    staticGroup.add(merlon);
+
+    // Stone coping cap
+    const cap = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.1, 0.38), darkStoneMat);
+    cap.position.set(Math.sin(ang) * (R * 1.18), H + 0.44, Math.cos(ang) * (R * 1.18));
+    cap.rotation.y = -ang;
+    staticGroup.add(cap);
+  }
+
+  // 7. Conical Slate Spire Roof
+  const roofHeight = 4.2;
+  const roofGeo = new THREE.ConeGeometry(R * 1.26, roofHeight, 12);
+  const roofMesh = new THREE.Mesh(roofGeo, slateRoofMat);
+  roofMesh.position.y = H + roofHeight * 0.5 - 0.2;
+  roofMesh.castShadow = true;
+  staticGroup.add(roofMesh);
+
+  // Timber eaves soffit trim
+  const eaveTrim = new THREE.Mesh(new THREE.CylinderGeometry(R * 1.29, R * 1.29, 0.16, 12), darkStoneMat);
+  eaveTrim.position.y = H - 0.18;
+  staticGroup.add(eaveTrim);
+
+  // 8. Apex Finial Spear & Flagstaff
+  const finialBase = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 6), brassMat);
+  finialBase.position.y = H + roofHeight - 0.15;
+  staticGroup.add(finialBase);
+
+  const flagStaff = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 1.8, 6), brassMat);
+  flagStaff.position.y = H + roofHeight + 0.75;
+  staticGroup.add(flagStaff);
+
+  const finialTip = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.35, 6), brassMat);
+  finialTip.position.y = H + roofHeight + 1.7;
+  staticGroup.add(finialTip);
+
+  // 9. Animated Fluttering Heraldic Pennant Flag
+  const bannerGroup = new THREE.Group();
+  bannerGroup.position.set(0, H + roofHeight + 1.2, 0);
+
+  const bannerMat = new THREE.MeshStandardMaterial({
+    color: bannerHex,
+    roughness: 0.55,
+    side: THREE.DoubleSide,
+  });
+
+  const bannerGeo = new THREE.PlaneGeometry(1.6, 0.72, 8, 2);
+  bannerGeo.translate(0.8, 0, 0); // Origin at flagpole
+  const bannerMesh = new THREE.Mesh(bannerGeo, bannerMat);
+  bannerMesh.castShadow = true;
+  bannerGroup.add(bannerMesh);
+  group.add(bannerGroup);
+
+  // Merge non-animated static meshes into shared material batches
+  mergeStaticMeshes(staticGroup);
+
+  let bannerTime = Math.random() * Math.PI * 2;
+  const update = (dt: number) => {
+    bannerTime += dt * 3.8;
+    bannerGroup.rotation.y = Math.sin(bannerTime * 0.8) * 0.22 + 0.1;
+    const pos = bannerGeo.attributes.position as THREE.BufferAttribute;
+    for (let i = 0; i < pos.count; i++) {
+      const u = pos.getX(i) / 1.6;
+      pos.setZ(i, Math.sin(bannerTime * 2.2 + u * 4.5) * (0.16 * u));
+    }
+    pos.needsUpdate = true;
+  };
+
+  return { group, update };
+}
+
+/**
+ * Creates an imposing fortified Town Gatehouse:
+ * - Twin semicircular flanking gate towers with machicolations
+ * - Grand Romanesque barrel-vaulted archway passage (clearance ~4.8m, width ~4.6m)
+ * - Raised iron portcullis lattice gate with spiked tines
+ * - Heavy oak timber gates thrown open against inner portal walls
+ * - Stepped stone voussoirs and golden astral heraldic crest medallion
+ * - Two Gothic wrought-iron wall sconce lanterns flanking the portal
+ */
+export function createTownGatehouse(opts: {
+  x: number;
+  z: number;
+  rotationY?: number;
+  isNorth?: boolean;
+}): { group: THREE.Group; update: (dt: number) => void } {
+  const group = new THREE.Group();
+  group.name = `town_gatehouse_${opts.isNorth ? 'north' : 'south'}`;
+
+  const groundY = getTerrainHeight(opts.x, opts.z);
+  group.position.set(opts.x, groundY, opts.z);
+  group.rotation.y = opts.rotationY ?? 0;
+
+  const staticGroup = new THREE.Group();
+  staticGroup.name = 'gatehouse_static';
+  group.add(staticGroup);
+
+  const stoneMat = new THREE.MeshStandardMaterial({
+    color: 0xc8c2b5,
+    roughness: 0.78,
+    metalness: 0.05,
+  });
+  const darkStoneMat = new THREE.MeshStandardMaterial({
+    color: 0x717b8c,
+    roughness: 0.82,
+    metalness: 0.08,
+  });
+  const timberMat = new THREE.MeshStandardMaterial({
+    color: 0x3d2715,
+    roughness: 0.85,
+  });
+  const ironMat = new THREE.MeshStandardMaterial({
+    color: 0x1f242d,
+    metalness: 0.78,
+    roughness: 0.38,
+  });
+  const goldMat = new THREE.MeshStandardMaterial({
+    color: 0xd4af37,
+    metalness: 0.85,
+    roughness: 0.28,
+  });
+  const lanternGlassMat = new THREE.MeshBasicMaterial({
+    color: 0xffd166,
+  });
+
+  const towerH = 7.8;
+  const towerR = 2.1;
+  const towerSpacing = 4.0; // Left tower at -4.0, Right at +4.0
+
+  // 1. Twin Flanking Gate Towers
+  [-towerSpacing, towerSpacing].forEach((tx) => {
+    // Base skirt
+    const skirt = new THREE.Mesh(new THREE.CylinderGeometry(towerR * 1.05, towerR * 1.25, 1.8, 10), darkStoneMat);
+    skirt.position.set(tx, -0.1, 0);
+    skirt.castShadow = true;
+    staticGroup.add(skirt);
+
+    // Tower cylinder
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(towerR, towerR * 1.05, towerH - 1.2, 10), stoneMat);
+    body.position.set(tx, 0.8 + (towerH - 1.2) * 0.5, 0);
+    body.castShadow = true;
+    staticGroup.add(body);
+
+    // Corbel overhang
+    for (let i = 0; i < 8; i++) {
+      const ang = (i / 8) * Math.PI * 2;
+      const corbel = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.55, 0.42), darkStoneMat);
+      corbel.position.set(tx + Math.sin(ang) * (towerR * 1.04), towerH - 1.1, Math.cos(ang) * (towerR * 1.04));
+      corbel.rotation.y = -ang;
+      staticGroup.add(corbel);
+    }
+
+    // Parapet rim
+    const parapet = new THREE.Mesh(new THREE.CylinderGeometry(towerR * 1.22, towerR * 1.16, 0.25, 10), darkStoneMat);
+    parapet.position.set(tx, towerH - 0.7, 0);
+    staticGroup.add(parapet);
+
+    // Merlons
+    for (let i = 0; i < 8; i += 2) {
+      const ang = (i / 8) * Math.PI * 2;
+      const merlon = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.95, 0.28), stoneMat);
+      merlon.position.set(tx + Math.sin(ang) * (towerR * 1.16), towerH - 0.15, Math.cos(ang) * (towerR * 1.16));
+      merlon.rotation.y = -ang;
+      staticGroup.add(merlon);
+    }
+  });
+
+  // 2. Central Arch Portal Structure
+  // Wall lintel mass above archway
+  const lintelMass = new THREE.Mesh(new THREE.BoxGeometry(4.8, 2.4, 4.4), stoneMat);
+  lintelMass.position.set(0, 5.0, 0);
+  lintelMass.castShadow = true;
+  staticGroup.add(lintelMass);
+
+  // Parapet over archway connecting the towers
+  const archParapetFloor = new THREE.Mesh(new THREE.BoxGeometry(4.8, 0.32, 4.6), darkStoneMat);
+  archParapetFloor.position.set(0, 6.25, 0);
+  staticGroup.add(archParapetFloor);
+
+  // Outer and inner battlements on the arch walkway
+  [-2.2, 2.2].forEach((pz) => {
+    [-1.5, 0, 1.5].forEach((px) => {
+      const merlon = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.95, 0.32), stoneMat);
+      merlon.position.set(px, 6.8, pz);
+      merlon.castShadow = true;
+      staticGroup.add(merlon);
+    });
+  });
+
+  // Archway Stone Voussoirs (radial faceted arch frame on outer and inner portal faces)
+  [-2.15, 2.15].forEach((faceZ) => {
+    for (let i = 0; i <= 8; i++) {
+      const ang = (i / 8) * Math.PI; // 0 to PI
+      const vx = Math.cos(ang) * 2.3;
+      const vy = 2.4 + Math.sin(ang) * 2.3;
+      const block = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.45, 0.35), darkStoneMat);
+      block.position.set(vx, vy, faceZ);
+      block.rotation.z = ang - Math.PI * 0.5;
+      staticGroup.add(block);
+    }
+  });
+
+  // 3. Heraldic Gold Astral Sunburst Medallion (Center over archway)
+  const crestBack = new THREE.Mesh(new THREE.CylinderGeometry(0.58, 0.58, 0.12, 8), darkStoneMat);
+  crestBack.rotation.x = Math.PI * 0.5;
+  crestBack.position.set(0, 5.4, 2.25);
+  staticGroup.add(crestBack);
+
+  const crestGold = new THREE.Mesh(new THREE.DodecahedronGeometry(0.38, 0), goldMat);
+  crestGold.position.set(0, 5.4, 2.32);
+  staticGroup.add(crestGold);
+
+  // 4. Portcullis Grille (Raised iron lattice suspended in arch slot at y = 3.4m)
+  const portcullisGroup = new THREE.Group();
+  portcullisGroup.position.set(0, 3.4, 0);
+
+  // Vertical iron bars
+  for (let x = -2.0; x <= 2.0; x += 0.4) {
+    const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.032, 2.8, 6), ironMat);
+    bar.position.set(x, 0, 0);
+    portcullisGroup.add(bar);
+
+    // Spiked bottom tines
+    const spike = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.22, 6), ironMat);
+    spike.position.set(x, -1.5, 0);
+    spike.rotation.x = Math.PI;
+    portcullisGroup.add(spike);
+  }
+
+  // Horizontal iron crossbars
+  [-1.0, -0.2, 0.6, 1.2].forEach((by) => {
+    const hBar = new THREE.Mesh(new THREE.BoxGeometry(4.3, 0.07, 0.07), ironMat);
+    hBar.position.set(0, by, 0);
+    portcullisGroup.add(hBar);
+  });
+  staticGroup.add(portcullisGroup);
+
+  // 5. Open Heavy Oak Timber Gates (Swung wide open flush against portal jambs)
+  [-1.95, 1.95].forEach((gx, idx) => {
+    const doorLeaf = new THREE.Mesh(new THREE.BoxGeometry(0.18, 3.8, 1.85), timberMat);
+    doorLeaf.position.set(gx, 2.0, idx === 0 ? -0.85 : 0.85);
+    doorLeaf.castShadow = true;
+    staticGroup.add(doorLeaf);
+
+    // Iron strap hinges
+    [-1.2, 0, 1.2].forEach((hy) => {
+      const hinge = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.09, 1.9), ironMat);
+      hinge.position.set(gx, 2.0 + hy, idx === 0 ? -0.85 : 0.85);
+      staticGroup.add(hinge);
+    });
+  });
+
+  // 6. Dual Flanking Wall Lantern Sconces
+  const lanterns: THREE.Mesh[] = [];
+  [-2.8, 2.8].forEach((lx) => {
+    const sconceArm = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.45), ironMat);
+    sconceArm.position.set(lx, 3.2, 2.35);
+    staticGroup.add(sconceArm);
+
+    const cage = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.11, 0.32, 6), ironMat);
+    cage.position.set(lx, 3.0, 2.55);
+    staticGroup.add(cage);
+
+    const core = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.08, 0.22, 6), lanternGlassMat);
+    core.position.set(lx, 3.0, 2.55);
+    group.add(core); // Keep dynamic for amber flicker
+    lanterns.push(core);
+  });
+
+  mergeStaticMeshes(staticGroup);
+
+  let lanternTime = Math.random() * 10;
+  const update = (dt: number) => {
+    lanternTime += dt * 8.0;
+    const flicker = 0.85 + Math.sin(lanternTime) * 0.1 + Math.sin(lanternTime * 2.3) * 0.05;
+    lanterns.forEach((l) => {
+      l.scale.set(flicker, flicker, flicker);
+    });
+  };
+
+  return { group, update };
+}
+
+/**
+ * Creates a thick, battered fortified Curtain Wall Segment between two points p1 and p2:
+ * - Samples terrain at both ends and midpoint with skirt extension
+ * - Battered stone plinth foundation for structural mass
+ * - Corbeled machicolation cornice running along the outer parapet
+ * - Crenelated merlons and embrasures
+ * - Inner wooden/stone chemin de ronde walkway with interior safety curb
+ */
+export function createTownCurtainWallSegment(
+  p1: { x: number; z: number },
+  p2: { x: number; z: number },
+  height: number = 5.2
+): { group: THREE.Group; length: number; center: THREE.Vector3 } {
+  const group = new THREE.Group();
+  group.name = 'curtain_wall_segment';
+
+  const dx = p2.x - p1.x;
+  const dz = p2.z - p1.z;
+  const length = Math.hypot(dx, dz);
+  const angle = Math.atan2(dx, dz);
+
+  const mx = (p1.x + p2.x) * 0.5;
+  const mz = (p1.z + p2.z) * 0.5;
+  const gy1 = getTerrainHeight(p1.x, p1.z);
+  const gy2 = getTerrainHeight(p2.x, p2.z);
+  const midGy = getTerrainHeight(mx, mz);
+  const minGy = Math.min(gy1, gy2, midGy);
+
+  group.position.set(mx, minGy, mz);
+  group.rotation.y = angle;
+
+  const stoneMat = new THREE.MeshStandardMaterial({
+    color: 0xc8c2b5,
+    roughness: 0.78,
+    metalness: 0.05,
+  });
+  const darkStoneMat = new THREE.MeshStandardMaterial({
+    color: 0x717b8c,
+    roughness: 0.82,
+    metalness: 0.08,
+  });
+  const woodMat = new THREE.MeshStandardMaterial({
+    color: 0x422d1b,
+    roughness: 0.85,
+  });
+
+  const wallThickness = 1.45;
+  const wallBaseThickness = 1.95;
+  const totalH = height + (midGy - minGy);
+
+  // 1. Foundation Skirt (sunken -0.95m below min ground)
+  const skirtH = 1.8;
+  const skirt = new THREE.Mesh(new THREE.BoxGeometry(wallBaseThickness * 1.15, skirtH, length), darkStoneMat);
+  skirt.position.set(0, skirtH * 0.5 - 0.95, 0);
+  skirt.castShadow = true;
+  skirt.receiveShadow = true;
+  group.add(skirt);
+
+  // 2. Battered Lower Plinth
+  const plinthH = 1.4;
+  const plinth = new THREE.Mesh(new THREE.BoxGeometry(wallBaseThickness, plinthH, length), stoneMat);
+  plinth.position.set(0, plinthH * 0.5 + 0.35, 0);
+  plinth.castShadow = true;
+  group.add(plinth);
+
+  // 3. Main Curtain Wall Body
+  const bodyH = totalH - plinthH;
+  const body = new THREE.Mesh(new THREE.BoxGeometry(wallThickness, bodyH, length), stoneMat);
+  body.position.set(0, plinthH + bodyH * 0.5, 0);
+  body.castShadow = true;
+  body.receiveShadow = true;
+  group.add(body);
+
+  // 4. Outer Corbel Machicolation Ledge
+  const corbelSpacing = 1.6;
+  const corbelCount = Math.max(2, Math.floor(length / corbelSpacing));
+  const halfLen = length * 0.5;
+  const corbelY = plinthH + bodyH - 0.35;
+
+  for (let i = 0; i <= corbelCount; i++) {
+    const lz = -halfLen + (i / corbelCount) * length;
+    const corbel = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.52, 0.28), darkStoneMat);
+    corbel.position.set(wallThickness * 0.5 + 0.12, corbelY, lz);
+    corbel.castShadow = true;
+    group.add(corbel);
+  }
+
+  // Stringcourse cornice trim running along the wall top
+  const cornice = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.18, length), darkStoneMat);
+  cornice.position.set(wallThickness * 0.5 + 0.12, plinthH + bodyH - 0.08, 0);
+  group.add(cornice);
+
+  // 5. Parapet Battlements (Outer Merlons & Embrasures)
+  const merlonLen = 0.95;
+  const embrasureLen = 0.65;
+  const cycle = merlonLen + embrasureLen;
+  const merlonCount = Math.max(1, Math.floor(length / cycle));
+  const merlonY = plinthH + bodyH + 0.55;
+
+  for (let i = 0; i < merlonCount; i++) {
+    const mzLocal = -halfLen + 0.5 * cycle + i * cycle;
+    const merlon = new THREE.Mesh(new THREE.BoxGeometry(0.38, 1.1, merlonLen), stoneMat);
+    merlon.position.set(wallThickness * 0.5 - 0.08, merlonY, mzLocal);
+    merlon.castShadow = true;
+    group.add(merlon);
+
+    // Merlon coping cap
+    const cap = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.08, merlonLen + 0.08), darkStoneMat);
+    cap.position.set(wallThickness * 0.5 - 0.08, merlonY + 0.58, mzLocal);
+    group.add(cap);
+  }
+
+  // 6. Chemin de Ronde (Wall-Walk Walkway Plank Floor)
+  const walkFloor = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.12, length), woodMat);
+  walkFloor.position.set(-0.15, plinthH + bodyH + 0.04, 0);
+  walkFloor.receiveShadow = true;
+  group.add(walkFloor);
+
+  // Inner curb balustrade
+  const innerCurb = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.42, length), darkStoneMat);
+  innerCurb.position.set(-wallThickness * 0.5 + 0.08, plinthH + bodyH + 0.22, 0);
+  group.add(innerCurb);
+
+  mergeStaticMeshes(group);
+
+  return {
+    group,
+    length,
+    center: new THREE.Vector3(mx, minGy, mz),
+  };
+}
+
+/**
+ * Assembles the full Boss-Tier Castle Curtain Wall enclosing Solstice Haven:
+ * - 6 Fortified Corner and Flank Bastion Watchtowers
+ * - 2 Grand Fortified Gatehouses (South Gate toward Valley & North Astral Gate toward Mountains)
+ * - 8 Connecting Stone Curtain Wall segments
+ * - Collects collision obstacles and animates banners and lanterns
+ */
+export function createSolsticeHavenWallComplex(): {
+  group: THREE.Group;
+  update: (dt: number) => void;
+  obstacles: VillageObstacle[];
+} {
+  const group = new THREE.Group();
+  group.name = 'solstice_haven_castle_wall_complex';
+
+  const updaters: ((dt: number) => void)[] = [];
+  const obstacles: VillageObstacle[] = [];
+
+  // --- 1. Gatehouses ---
+  // South Gatehouse: (0, 22.5), rotY = 0 (facing south toward valley)
+  const southGate = createTownGatehouse({ x: 0, z: 22.5, rotationY: 0, isNorth: false });
+  group.add(southGate.group);
+  updaters.push(southGate.update);
+  // Left and Right tower obstacles for south gate (passage at x in [-1.8, 1.8] remains open)
+  obstacles.push({ x: -4.0, z: 22.5, radius: 2.1 });
+  obstacles.push({ x: 4.0, z: 22.5, radius: 2.1 });
+
+  // North Gatehouse: (0, -22.5), rotY = Math.PI (facing north toward mountains)
+  const northGate = createTownGatehouse({ x: 0, z: -22.5, rotationY: Math.PI, isNorth: true });
+  group.add(northGate.group);
+  updaters.push(northGate.update);
+  // Left and Right tower obstacles for north gate (passage at x in [-1.8, 1.8] remains open)
+  obstacles.push({ x: -4.0, z: -22.5, radius: 2.1 });
+  obstacles.push({ x: 4.0, z: -22.5, radius: 2.1 });
+
+  // --- 2. Bastion Watchtowers ---
+  const bastionConfigs = [
+    { id: 'nw', x: -21.0, z: -17.0, bannerColor: 0x1e3a8a }, // Astral navy
+    { id: 'ne', x: 21.0, z: -17.0, bannerColor: 0x8b1d24 },  // Crimson
+    { id: 'west', x: -24.5, z: 0.0, bannerColor: 0x1e3a8a },
+    { id: 'east', x: 24.5, z: 0.0, bannerColor: 0x8b1d24 },
+    { id: 'sw', x: -21.0, z: 17.0, bannerColor: 0x1e3a8a },
+    { id: 'se', x: 21.0, z: 17.0, bannerColor: 0x8b1d24 },
+  ];
+
+  bastionConfigs.forEach((bc) => {
+    const tower = createTownBastionTower({
+      x: bc.x,
+      z: bc.z,
+      bannerColor: bc.bannerColor,
+    });
+    group.add(tower.group);
+    updaters.push(tower.update);
+    obstacles.push({ x: bc.x, z: bc.z, radius: 2.5 });
+  });
+
+  // --- 3. Curtain Wall Segments ---
+  const wallLinks: [
+    { x: number; z: number },
+    { x: number; z: number }
+  ][] = [
+    // North Gate West to NW Bastion
+    [{ x: -4.0, z: -22.5 }, { x: -21.0, z: -17.0 }],
+    // NW Bastion to West Flank
+    [{ x: -21.0, z: -17.0 }, { x: -24.5, z: 0.0 }],
+    // West Flank to SW Bastion
+    [{ x: -24.5, z: 0.0 }, { x: -21.0, z: 17.0 }],
+    // SW Bastion to South Gate West
+    [{ x: -21.0, z: 17.0 }, { x: -4.0, z: 22.5 }],
+    // South Gate East to SE Bastion
+    [{ x: 4.0, z: 22.5 }, { x: 21.0, z: 17.0 }],
+    // SE Bastion to East Flank
+    [{ x: 21.0, z: 17.0 }, { x: 24.5, z: 0.0 }],
+    // East Flank to NE Bastion
+    [{ x: 24.5, z: 0.0 }, { x: 21.0, z: -17.0 }],
+    // NE Bastion to North Gate East
+    [{ x: 21.0, z: -17.0 }, { x: 4.0, z: -22.5 }],
+  ];
+
+  wallLinks.forEach(([p1, p2]) => {
+    const wall = createTownCurtainWallSegment(p1, p2);
+    group.add(wall.group);
+
+    // Place spaced collision obstacles along the segment
+    const dx = p2.x - p1.x;
+    const dz = p2.z - p1.z;
+    const len = Math.hypot(dx, dz);
+    const steps = Math.max(2, Math.round(len / 3.2));
+    for (let s = 1; s < steps; s++) {
+      const u = s / steps;
+      obstacles.push({
+        x: p1.x + dx * u,
+        z: p1.z + dz * u,
+        radius: 1.55,
+      });
+    }
+  });
+
+  const update = (dt: number) => {
+    for (let i = 0; i < updaters.length; i++) {
+      updaters[i](dt);
+    }
+  };
+
+  return { group, update, obstacles };
+}
+
 export interface InteractiveNpcEntity {
   id: string;
   name: string;
@@ -4653,6 +5284,12 @@ export function createSolsticeHavenVillage(): SolsticeHavenBundle {
       w.group.position.y += Math.abs(Math.sin(w.walkPhase)) * 0.03;
     }
   });
+
+  // 9. Castle Town Wall, Bastion Towers & Fortified Gatehouses Enclosing Solstice Haven
+  const townWall = createSolsticeHavenWallComplex();
+  group.add(townWall.group);
+  updaters.push(townWall.update);
+  obstacles.push(...townWall.obstacles);
 
   return {
     group,

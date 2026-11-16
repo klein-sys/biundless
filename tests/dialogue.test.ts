@@ -116,4 +116,29 @@ describe('Dialogue & Quest System', () => {
     const scout = runner.startDialogue('scout');
     expect(scout?.speakerName).toBe('Eldrin the Scout');
   });
+
+  it('safely closes dialogue and selecting terminal choices without re-entrant state recursion', () => {
+    let changeCalls = 0;
+    const runner = new DialogueRunner(createDefaultProgression(), {
+      onShowToast: () => {},
+      onStateChanged: () => {
+        changeCalls++;
+        if (!runner.isOpen) {
+          // Idempotent close call must not recurse
+          runner.closeDialogue();
+        }
+      },
+    });
+
+    runner.startDialogue('scout');
+    expect(runner.isOpen).toBe(true);
+
+    const closeChoice = runner.getAvailableChoices().find((c) => c.action === 'close');
+    expect(closeChoice).toBeDefined();
+
+    const res = runner.selectChoice(closeChoice!);
+    expect(res.closed).toBe(true);
+    expect(runner.isOpen).toBe(false);
+    expect(changeCalls).toBe(1); // Exactly 1 callback, zero recursion
+  });
 });

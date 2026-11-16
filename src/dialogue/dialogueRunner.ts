@@ -46,6 +46,7 @@ export class DialogueRunner {
   }
 
   public closeDialogue(): void {
+    if (this.currentNodeId === null && this.activeNpcId === null) return;
     this.currentNodeId = null;
     this.activeNpcId = null;
     this.callbacks.onStateChanged();

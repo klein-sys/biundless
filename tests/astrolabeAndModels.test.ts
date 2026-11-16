@@ -15,6 +15,9 @@ import {
   createEldrinScout,
   createTownFountain,
   createLanternPost,
+  createTownBastionTower,
+  createTownGatehouse,
+  createSolsticeHavenWallComplex,
 } from '../src/engine/ProceduralModels';
 
 describe('Astrolabe Grimoire SVG Plotter', () => {
@@ -239,6 +242,81 @@ describe('Stylized 3D Procedural Models & Solstice Haven Living Town', () => {
       village.update(0.5);
       village.update(1.2);
     }).not.toThrow();
+
+    // Verify village includes the castle curtain wall complex with perimeter obstacles
+    let foundCastleWall = false;
+    village.group.traverse((child) => {
+      if (child.name === 'solstice_haven_castle_wall_complex') foundCastleWall = true;
+    });
+    expect(foundCastleWall).toBe(true);
+    // Over 25 obstacles including cottages, fountain, gazebo, bastion towers, and curtain wall disks
+    expect(village.obstacles.length).toBeGreaterThan(25);
+  });
+
+  it('creates an imposing Boss-Tier Castle Curtain Wall fortress ring enclosing Solstice Haven', () => {
+    const wallComplex = createSolsticeHavenWallComplex();
+    expect(wallComplex.group).toBeInstanceOf(THREE.Group);
+    expect(wallComplex.group.name).toBe('solstice_haven_castle_wall_complex');
+
+    let bastionCount = 0;
+    let gatehouseCount = 0;
+    let wallSegCount = 0;
+
+    wallComplex.group.traverse((child) => {
+      if (child.name.startsWith('bastion_tower_')) bastionCount++;
+      if (child.name.startsWith('town_gatehouse_')) gatehouseCount++;
+      if (child.name === 'curtain_wall_segment') wallSegCount++;
+    });
+
+    expect(bastionCount).toBe(6); // 4 corners (NW, NE, SW, SE) + 2 flanks (W, E)
+    expect(gatehouseCount).toBe(2); // South Gate toward Valley + North Astral Gate toward Mountains
+    expect(wallSegCount).toBe(8); // 8 connecting curtain wall segments
+    expect(wallComplex.obstacles.length).toBeGreaterThan(20);
+
+    // Verify update animates pennant banners and lantern flickers without error
+    expect(() => {
+      wallComplex.update(0.016);
+      wallComplex.update(0.1);
+      wallComplex.update(0.5);
+    }).not.toThrow();
+  });
+
+  it('sculpts a fortified Bastion Watchtower with corbel machicolations, conical roof, and animated banner', () => {
+    const tower = createTownBastionTower({ x: -21, z: -17, bannerColor: 0x1e3a8a });
+    expect(tower.group).toBeInstanceOf(THREE.Group);
+    expect(tower.group.name).toBe('bastion_tower_-21_-17');
+
+    let hasStaticGroup = false;
+    let meshCount = 0;
+    tower.group.traverse((child) => {
+      if (child.name === 'bastion_static') hasStaticGroup = true;
+      if (child instanceof THREE.Mesh) meshCount++;
+    });
+
+    expect(hasStaticGroup).toBe(true);
+    expect(meshCount).toBeGreaterThan(0);
+
+    // Stepping update should animate the pennant wave
+    expect(() => tower.update(0.016)).not.toThrow();
+  });
+
+  it('sculpts a fortified Grand Gatehouse with vaulted archway, raised portcullis, open timber gates, and heraldic crest', () => {
+    const gate = createTownGatehouse({ x: 0, z: 22.5, rotationY: 0, isNorth: false });
+    expect(gate.group).toBeInstanceOf(THREE.Group);
+    expect(gate.group.name).toBe('town_gatehouse_south');
+
+    let hasStatic = false;
+    let meshCount = 0;
+    gate.group.traverse((child) => {
+      if (child.name === 'gatehouse_static') hasStatic = true;
+      if (child instanceof THREE.Mesh) meshCount++;
+    });
+
+    expect(hasStatic).toBe(true);
+    expect(meshCount).toBeGreaterThan(0);
+
+    // Stepping update should animate lantern amber flicker
+    expect(() => gate.update(0.016)).not.toThrow();
   });
 
   it('creates an articulated stylized Theron rig with forge, anvil, and spark systems', () => {

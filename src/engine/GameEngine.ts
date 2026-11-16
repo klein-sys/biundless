@@ -224,8 +224,8 @@ export class GameEngine {
       onStateChanged: () => {
         applyProgressionToPlayer(this.player, computeEffectiveStats(this.progression));
         saveProgression(this.progression);
-        if (!this.dialogueRunner.isOpen) {
-          this.ui.closeDialogue();
+        if (!this.dialogueRunner.isOpen && this.ui.isDialogueOpen) {
+          this.closeDialogueAndRestoreControls();
         }
       },
     });
@@ -299,6 +299,10 @@ export class GameEngine {
       onTogglePause: () => {
         if (this.isCutscenePlaying) {
           this.endBossCutscene();
+          return;
+        }
+        if (this.dialogueRunner.isOpen) {
+          this.closeDialogueAndRestoreControls();
           return;
         }
         if (this.ui.isWorkedExampleOpen()) {
@@ -808,11 +812,13 @@ export class GameEngine {
     this.totalTime += dt;
     const nowSec = performance.now() / 1000;
 
-    // Camera Look
-    const look = this.input.consumeLookDelta();
-    this.cameraCtrl.applyLookDelta(look.dx, look.dy, this.settings.sensitivity);
-
     const isDialogueActive = this.dialogueRunner.isOpen;
+
+    // Camera Look: screen is completely frozen during NPC dialogue and pause so camera doesn't rotate
+    const look = this.input.consumeLookDelta();
+    if (!isDialogueActive && !this.paused) {
+      this.cameraCtrl.applyLookDelta(look.dx, look.dy, this.settings.sensitivity);
+    }
 
     // Discrete Inputs
     if (this.input.buffer.consume('togglePov', nowSec)) {
@@ -1371,16 +1377,29 @@ export class GameEngine {
     }
   }
 
-  private handleInteract(): void {
+  private closeDialogueAndRestoreControls(): void {
     if (this.dialogueRunner.isOpen) {
       this.dialogueRunner.closeDialogue();
-      this.ui.closeDialogue();
+    }
+    this.ui.closeDialogue();
+    this.input.setPointerLockAllowed(true);
+    this.ui.setPointerHintVisible(!this.isMobileUiActive() && !this.input.isPointerLocked());
+  }
+
+  private handleInteract(): void {
+    if (this.dialogueRunner.isOpen) {
+      this.closeDialogueAndRestoreControls();
       return;
     }
     if (!this.nearbyNpc) return;
 
     const node = this.dialogueRunner.startDialogue(this.nearbyNpc.role);
     if (!node) return;
+
+    // Switch screen to cursor mode immediately: unlock pointer so user can easily click choices
+    this.input.setPointerLockAllowed(false);
+    this.input.exitPointerLock();
+    this.ui.setPointerHintVisible(false);
 
     const choices = this.dialogueRunner.getAvailableChoices();
     this.ui.openDialogue(node, choices, this.progression, (choice) => {
@@ -1391,7 +1410,7 @@ export class GameEngine {
   private handleDialogueChoice(choice: DialogueChoice): void {
     const res = this.dialogueRunner.selectChoice(choice);
     if (res.closed || !res.nextNode) {
-      this.ui.closeDialogue();
+      this.closeDialogueAndRestoreControls();
     } else {
       const nextChoices = this.dialogueRunner.getAvailableChoices();
       this.ui.openDialogue(res.nextNode, nextChoices, this.progression, (c) => {
