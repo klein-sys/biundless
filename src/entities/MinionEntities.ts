@@ -97,6 +97,7 @@ export interface MinionRuntime {
 
   patrolAngle: number;
   patrolPauseTimer: number;
+  attackCooldown?: number;
 
   rootGroup?: THREE.Group;
   telegraphMesh?: THREE.Mesh;
@@ -142,6 +143,7 @@ export function createMinionRuntime(
     stateTimer: 0,
     patrolAngle: Math.random() * Math.PI * 2,
     patrolPauseTimer: 1.0 + Math.random() * 2.0,
+    attackCooldown: 0,
   };
 }
 
@@ -226,6 +228,10 @@ export function stepMinionEntity(
   const distToPlayer = Math.hypot(playerPos.x - minion.x, playerPos.z - minion.z);
   const distFromHome = Math.hypot(minion.x - minion.homeX, minion.z - minion.homeZ);
 
+  if (minion.attackCooldown && minion.attackCooldown > 0) {
+    minion.attackCooldown = Math.max(0, minion.attackCooldown - dt);
+  }
+
   // Health bar billboard scaling
   if (minion.healthBarFill) {
     const fraction = Math.max(0, Math.min(1, minion.hp / minion.maxHp));
@@ -265,6 +271,7 @@ export function stepMinionEntity(
         }
       }
       minion.state = 'CHASE';
+      minion.attackCooldown = 1.2;
     }
   } else if (distFromHome > minion.leashRadius) {
     // Leash: Disengage and retreat to home
@@ -281,7 +288,7 @@ export function stepMinionEntity(
       minion.state = 'IDLE_PATROL';
     }
   } else if (minion.state === 'CHASE') {
-    if (distToPlayer <= cfg.attackRange) {
+    if (distToPlayer <= cfg.attackRange && (minion.attackCooldown ?? 0) <= 0) {
       // Begin Attack Windup
       minion.state = 'ATTACK_WINDUP';
       minion.stateTimer = cfg.windupDuration;
@@ -414,7 +421,10 @@ export function respawnMinion(minion: MinionRuntime): void {
   minion.hp = cfg.maxHp;
   minion.state = 'IDLE_PATROL';
   minion.stateTimer = 0;
+  minion.attackCooldown = 0;
   if (minion.telegraphMesh) minion.telegraphMesh.visible = false;
+  if (minion.healthBarFill) minion.healthBarFill.scale.x = 1.0;
+  if (minion.healthBarGroup) minion.healthBarGroup.visible = false;
   if (minion.rootGroup) {
     minion.rootGroup.visible = true;
     minion.rootGroup.position.set(minion.x, minion.y, minion.z);

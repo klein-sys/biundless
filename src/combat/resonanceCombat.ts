@@ -21,6 +21,7 @@ export interface PlayerState {
   hp: number;
   stamina: number;
   flasksRemaining: number;
+  maxFlasks?: number;
   selectedSigil: DerivativeSigilId;
   dodgeTimer: number;
   dodgeDirX: number;
@@ -70,6 +71,7 @@ export function createInitialPlayerState(): PlayerState {
     hp: 160,
     stamina: 100,
     flasksRemaining: 3,
+    maxFlasks: 3,
     selectedSigil: 'cos',
     dodgeTimer: 0,
     dodgeDirX: 0,
@@ -130,9 +132,12 @@ export function applyProgressionToPlayer(
   if (typeof stats.weaponDamageMultiplier === 'number') {
     player.baseStats.attack = Math.round(28 * stats.weaponDamageMultiplier);
   }
+  const oldMaxFlasks = player.maxFlasks ?? 3;
   if (typeof stats.maxFlasks === 'number') {
-    // If player had 3 and upgraded to 4, increase current flasks by the difference
-    // otherwise preserve current flasks clamped to maxFlasks
+    player.maxFlasks = stats.maxFlasks;
+    if (stats.maxFlasks > oldMaxFlasks) {
+      player.flasksRemaining += stats.maxFlasks - oldMaxFlasks;
+    }
     if (player.flasksRemaining > stats.maxFlasks) {
       player.flasksRemaining = stats.maxFlasks;
     }

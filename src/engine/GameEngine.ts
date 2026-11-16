@@ -112,6 +112,8 @@ interface ActiveShockwave {
   hitPlayer: boolean;
 }
 
+const _tempBillboardQuat = new THREE.Quaternion();
+
 export class GameEngine {
   private readonly renderer: THREE.WebGLRenderer;
   private readonly composer: EffectComposer;
@@ -1110,8 +1112,9 @@ export class GameEngine {
       gn.modelBundle.update(dt);
     }
     for (const minion of this.minions) {
-      if (minion.healthBarGroup) {
-        minion.healthBarGroup.quaternion.copy(this.camera.quaternion);
+      if (minion.healthBarGroup && minion.rootGroup) {
+        _tempBillboardQuat.copy(minion.rootGroup.quaternion).invert().multiply(this.camera.quaternion);
+        minion.healthBarGroup.quaternion.copy(_tempBillboardQuat);
       }
       stepMinionEntity(minion, dt, this.playerPos, this.minionCallbacks);
     }
@@ -1558,6 +1561,7 @@ export class GameEngine {
   private restSanctuary(): void {
     const maxHp = computeEffectiveStat(this.player, 'maxHp');
     this.player.hp = maxHp;
+    this.player.stamina = computeEffectiveStat(this.player, 'maxStamina');
     this.player.flasksRemaining = this.progression.maxFlasks ?? 3;
     for (const node of this.gatheringNodes) {
       node.harvested = false;
@@ -1661,6 +1665,7 @@ export class GameEngine {
       node.modelBundle.setHarvested(true);
       addInventoryItem(this.progression, node.def.type, 1);
       saveProgression(this.progression);
+      this.audio.playWardShatter(false);
       this.vfx.spawnBurst(
         new THREE.Vector3(node.def.x, getTerrainHeight(node.def.x, node.def.z) + 0.8, node.def.z),
         0x38bdf8,
@@ -1669,6 +1674,8 @@ export class GameEngine {
         0.4
       );
       this.ui.showToast(`HARVESTED: +1 ${node.def.name}`);
+      this.nearbyGatherNode = null;
+      this.ui.hideInteractPrompt();
       return;
     }
 

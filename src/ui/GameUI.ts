@@ -1768,6 +1768,23 @@ export class GameUI {
   public showInteractPrompt(label: string): void {
     this.interactLabel.textContent = label;
     this.interactPrompt.classList.remove('hidden');
+
+    const mIcon = this.mTalkBtn?.querySelector('.m-util-icon');
+    const mLabel = this.mTalkBtn?.querySelector('.m-util-label');
+    if (label.startsWith('Harvest')) {
+      if (mIcon) mIcon.textContent = label.includes('Ore') ? '⛏️' : '🌸';
+      if (mLabel) mLabel.textContent = 'GATHER';
+    } else if (label.startsWith('Read')) {
+      if (mIcon) mIcon.textContent = '📜';
+      if (mLabel) mLabel.textContent = 'READ';
+    } else if (label.startsWith('Rest')) {
+      if (mIcon) mIcon.textContent = '⛲';
+      if (mLabel) mLabel.textContent = 'REST';
+    } else {
+      if (mIcon) mIcon.textContent = '💬';
+      if (mLabel) mLabel.textContent = 'TALK';
+    }
+
     this.mTalkBtn.classList.remove('hidden');
   }
 
