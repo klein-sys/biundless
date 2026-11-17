@@ -139,7 +139,7 @@ class MockElement {
         stroke: vi.fn(),
         fill: vi.fn(),
         moveTo: vi.fn(),
-        quadraticCurveTo: vi.fn(),
+        lineTo: vi.fn(),
         closePath: vi.fn(),
         save: vi.fn(),
         restore: vi.fn(),

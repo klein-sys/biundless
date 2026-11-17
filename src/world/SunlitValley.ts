@@ -1,7 +1,12 @@
 import type { BossId } from '../bosses/bossDefinitions';
 
-export const WORLD_SIZE = 188;
-export const WORLD_PLAYABLE_RADIUS = 78;
+export const WORLD_SIZE = 220;
+export const WORLD_PLAYABLE_RADIUS = 94;
+
+export const TOWN_GATES = {
+  north: { x: 0, z: -22.5 },
+  south: { x: 0, z: 22.5 },
+} as const;
 
 export interface BiomeLandmark {
   readonly id: 'hub' | BossId;
@@ -33,8 +38,8 @@ export const BIOME_LANDMARKS: readonly BiomeLandmark[] = [
     id: 'witch',
     name: 'Whispering Glade',
     subtitle: 'Vespera · sin(θ) & cos(θ)',
-    x: -52,
-    z: -42,
+    x: -58,
+    z: -47,
     baseHeight: 1.4,
     plateauRadius: 18,
     territoryRadius: 26,
@@ -45,8 +50,8 @@ export const BIOME_LANDMARKS: readonly BiomeLandmark[] = [
     id: 'lich',
     name: 'Sunken Sun-Ruins',
     subtitle: 'Malakor · tan(θ) & cot(θ)',
-    x: 12,
-    z: 54,
+    x: 14,
+    z: 62,
     baseHeight: -1.2,
     plateauRadius: 18,
     territoryRadius: 26,
@@ -57,8 +62,8 @@ export const BIOME_LANDMARKS: readonly BiomeLandmark[] = [
     id: 'dragon',
     name: 'Skyridge Peak',
     subtitle: 'Vaelorath · sec(θ) & csc(θ)',
-    x: 48,
-    z: -48,
+    x: 54,
+    z: -54,
     baseHeight: 6.2,
     plateauRadius: 18,
     territoryRadius: 28,
@@ -71,6 +76,54 @@ export const LANDMARK_BY_ID: Record<'hub' | BossId, BiomeLandmark> = Object.from
   BIOME_LANDMARKS.map((b) => [b.id, b]),
 ) as Record<'hub' | BossId, BiomeLandmark>;
 
+interface RoadPoint {
+  readonly x: number;
+  readonly z: number;
+  readonly baseHeight?: number;
+}
+
+const northFork = { x: 0, z: -32 };
+const northRoad = [
+  { x: -5, z: -10.5 },
+  { x: -5.8, z: -16 },
+  { x: 0, z: -20 },
+  TOWN_GATES.north,
+  northFork,
+];
+
+const bossRoads: Record<BossId, readonly RoadPoint[]> = {
+  witch: [northFork, { x: -27, z: -35 }, LANDMARK_BY_ID.witch],
+  lich: [
+    { x: 0, z: 12 },
+    TOWN_GATES.south,
+    { x: 0, z: 27 },
+    { x: 5, z: 37 },
+    LANDMARK_BY_ID.lich,
+  ],
+  dragon: [
+    northFork,
+    { x: 24, z: -40, baseHeight: 0.9 },
+    { x: 39, z: -47, baseHeight: 3.4 },
+    LANDMARK_BY_ID.dragon,
+  ],
+};
+
+export const VALLEY_ROADS: readonly (readonly RoadPoint[])[] = [northRoad, ...Object.values(bossRoads)];
+const roadSegments = VALLEY_ROADS.flatMap((road) =>
+  road.slice(1).map((to, i) => ({ from: road[i], to })),
+);
+
+/** Land on the road facing the boss when arriving by waypoint. */
+export function getBossArrivalPoint(id: BossId): { x: number; z: number } {
+  const arena = LANDMARK_BY_ID[id];
+  const road = bossRoads[id];
+  const approach = road[road.length - 2];
+  const dx = approach.x - arena.x;
+  const dz = approach.z - arena.z;
+  const t = Math.min(1, 10 / Math.hypot(dx, dz));
+  return { x: arena.x + dx * t, z: arena.z + dz * t };
+}
+
 function clamp01(t: number): number {
   return Math.max(0, Math.min(1, t));
 }
@@ -80,39 +133,29 @@ function smoothstep(edge0: number, edge1: number, x: number): number {
   return t * t * (3 - 2 * t);
 }
 
-/** Minimum distance from point (px, pz) to line segment (ax, az)-(bx, bz), returning { dist, t }. */
-function distanceToSegment(
-  px: number,
-  pz: number,
-  ax: number,
-  az: number,
-  bx: number,
-  bz: number,
-): { dist: number; t: number } {
-  const vx = bx - ax;
-  const vz = bz - az;
-  const wx = px - ax;
-  const wz = pz - az;
-  const lenSq = vx * vx + vz * vz;
-  const t = lenSq > 1e-6 ? clamp01((wx * vx + wz * vz) / lenSq) : 0;
-  const cx = ax + vx * t;
-  const cz = az + vz * t;
-  return { dist: Math.hypot(px - cx, pz - cz), t };
+function sampleNearestRoad(x: number, z: number): { distance: number; height: number } {
+  let nearestDistanceSq = Infinity;
+  let height = 0;
+  for (const { from, to } of roadSegments) {
+    const dx = to.x - from.x;
+    const dz = to.z - from.z;
+    const t = clamp01(((x - from.x) * dx + (z - from.z) * dz) / (dx * dx + dz * dz));
+    const offsetX = x - (from.x + dx * t);
+    const offsetZ = z - (from.z + dz * t);
+    const distanceSq = offsetX * offsetX + offsetZ * offsetZ;
+    if (distanceSq < nearestDistanceSq) {
+      nearestDistanceSq = distanceSq;
+      const fromHeight = from.baseHeight ?? 0;
+      const toHeight = to.baseHeight ?? 0;
+      height = fromHeight + (toHeight - fromHeight) * smoothstep(0, 1, t);
+    }
+  }
+  return { distance: Math.sqrt(nearestDistanceSq), height };
 }
 
-/**
- * Returns 0..1 weight for whether (x, z) lies on one of the 3 cobblestone/dirt adventure trails
- * connecting Adventurer's Plaza to each boss biome.
- */
+/** Returns the 0..1 weight for the road surface at (x, z). */
 export function getTrailBlend(x: number, z: number): number {
-  let maxTrail = 0;
-  for (const lm of BIOME_LANDMARKS) {
-    if (lm.id === 'hub') continue;
-    const { dist } = distanceToSegment(x, z, 0, 0, lm.x, lm.z);
-    const w = 1 - smoothstep(1.9, 4.4, dist);
-    if (w > maxTrail) maxTrail = w;
-  }
-  return maxTrail;
+  return 1 - smoothstep(1.9, 4.4, sampleNearestRoad(x, z).distance);
 }
 
 /** Stream curve Z coordinate as a function of X for the northern sunlit brook. */
@@ -127,7 +170,7 @@ export function isOnNorthernBridge(x: number, z: number): boolean {
 }
 
 /**
- * Continuous rolling emerald meadow heightmap for the ~180x180 Sunlit Valley.
+ * Continuous rolling emerald meadow heightmap for Sunlit Valley.
  * Includes flattened plateaus for Adventurer's Plaza & 3 boss biomes, gentle trail ramps,
  * a shallow brook bed, walkable bridge arch, and natural perimeter valley ridges.
  */
@@ -140,17 +183,9 @@ export function getTerrainHeight(x: number, z: number): number {
 
   let h = hills + 0.65;
 
-  // Smoothly blend in trail ramps from hub (0,0) to each boss landmark
-  for (const lm of BIOME_LANDMARKS) {
-    if (lm.id === 'hub') continue;
-    const { dist, t } = distanceToSegment(x, z, 0, 0, lm.x, lm.z);
-    const trailInfluence = 1 - smoothstep(3.0, 10.5, dist);
-    if (trailInfluence > 0) {
-      const smoothT = t * t * (3 - 2 * t);
-      const rampHeight = lm.baseHeight * smoothT;
-      h = h * (1 - trailInfluence) + rampHeight * trailInfluence;
-    }
-  }
+  const road = sampleNearestRoad(x, z);
+  const trailInfluence = 1 - smoothstep(3.0, 10.5, road.distance);
+  h += (road.height - h) * trailInfluence;
 
   // Flatten circular plateaus for Adventurer's Plaza and the 3 boss arenas
   for (const lm of BIOME_LANDMARKS) {
@@ -161,7 +196,7 @@ export function getTerrainHeight(x: number, z: number): number {
     }
   }
 
-  // Shallow sunlit brook running across the northern valley (between Plaza and Sun-Ruins)
+  // Shallow sunlit brook running across the northern valley.
   const brookZ = getBrookCenterZ(x);
   const brookDist = Math.abs(z - brookZ);
   if (brookDist < 5.5 && x > -26 && x < 26) {
@@ -228,19 +263,19 @@ export interface WildMinionSpawnDefinition {
 
 export const GATHERING_NODES: readonly GatheringNodeDefinition[] = [
   // Northwestern Trail to Whispering Glade (Witch)
-  { id: 'node_glade_flora_1', type: 'moonbell', name: 'Moonbell Flora', x: -18, z: -15 },
-  { id: 'node_glade_ore_1', type: 'mithrilOre', name: 'Mithril Ore Vein', x: -32, z: -26 },
-  { id: 'node_glade_flora_2', type: 'moonbell', name: 'Moonbell Flora', x: -42, z: -34 },
+  { id: 'node_glade_flora_1', type: 'moonbell', name: 'Moonbell Flora', x: -9, z: -34.5 },
+  { id: 'node_glade_ore_1', type: 'mithrilOre', name: 'Mithril Ore Vein', x: -19, z: -32 },
+  { id: 'node_glade_flora_2', type: 'moonbell', name: 'Moonbell Flora', x: -26, z: -36.5 },
 
   // Southern Trail to Sunken Sun-Ruins (Lich)
-  { id: 'node_ruins_ore_1', type: 'mithrilOre', name: 'Mithril Ore Vein', x: 5, z: 28 },
+  { id: 'node_ruins_ore_1', type: 'mithrilOre', name: 'Mithril Ore Vein', x: 2.8, z: 28 },
   { id: 'node_ruins_flora_1', type: 'moonbell', name: 'Moonbell Flora', x: 8, z: 38 },
   { id: 'node_ruins_ore_2', type: 'mithrilOre', name: 'Mithril Ore Vein', x: 10, z: 46 },
 
   // Northeastern Trail to Skyridge Peak (Dragon)
-  { id: 'node_peak_ore_1', type: 'mithrilOre', name: 'Mithril Ore Vein', x: 20, z: -20 },
-  { id: 'node_peak_flora_1', type: 'moonbell', name: 'Moonbell Flora', x: 32, z: -32 },
-  { id: 'node_peak_ore_2', type: 'mithrilOre', name: 'Mithril Ore Vein', x: 40, z: -40 },
+  { id: 'node_peak_ore_1', type: 'mithrilOre', name: 'Mithril Ore Vein', x: 18, z: -36 },
+  { id: 'node_peak_flora_1', type: 'moonbell', name: 'Moonbell Flora', x: 29, z: -44 },
+  { id: 'node_peak_ore_2', type: 'mithrilOre', name: 'Mithril Ore Vein', x: 38, z: -44 },
 ];
 
 export const TRAILHEAD_SIGNPOSTS: readonly TrailheadSignpostDefinition[] = [
@@ -252,27 +287,27 @@ export const TRAILHEAD_SIGNPOSTS: readonly TrailheadSignpostDefinition[] = [
     z: 25.5,
     yaw: 0,
   },
-  // Outside North Gate (0, -22.5) pointing towards Whispering Glade & Skyridge Peak
+  // Beyond the North Gate bridge, at the fork for Whispering Glade and Skyridge Peak.
   {
     id: 'signpost_north_gate',
     label: 'Trailhead Guide: Whispering Glade (NW) · Skyridge Peak (NE)',
     x: 3.2,
-    z: -25.5,
+    z: northFork.z,
     yaw: Math.PI,
   },
 ];
 
 export const WILD_MINION_SPAWNS: readonly WildMinionSpawnDefinition[] = [
   // Phase Wolves guarding the Whispering Glade wilderness trail
-  { id: 'wolf_glade_1', type: 'wolf', homeX: -26, homeZ: -22, patrolRadius: 6.0, leashRadius: 14.0 },
-  { id: 'wolf_glade_2', type: 'wolf', homeX: -38, homeZ: -30, patrolRadius: 6.0, leashRadius: 14.0 },
+  { id: 'wolf_glade_1', type: 'wolf', homeX: -18, homeZ: -37.5, patrolRadius: 6.0, leashRadius: 14.0 },
+  { id: 'wolf_glade_2', type: 'wolf', homeX: -28, homeZ: -31, patrolRadius: 6.0, leashRadius: 14.0 },
 
   // Skeletal Sentinels guarding the Sunken Sun-Ruins approaches
   { id: 'skel_ruins_1', type: 'skeleton', homeX: 6, homeZ: 34, patrolRadius: 5.5, leashRadius: 14.0 },
   { id: 'skel_ruins_2', type: 'skeleton', homeX: 10, homeZ: 44, patrolRadius: 5.5, leashRadius: 14.0 },
 
   // Drake Wyrmlings patrolling the Skyridge Peak alpine foothills
-  { id: 'drake_peak_1', type: 'drake', homeX: 26, homeZ: -26, patrolRadius: 6.5, leashRadius: 14.0 },
-  { id: 'drake_peak_2', type: 'drake', homeX: 38, homeZ: -38, patrolRadius: 6.5, leashRadius: 14.0 },
+  { id: 'drake_peak_1', type: 'drake', homeX: 25, homeZ: -36, patrolRadius: 6.5, leashRadius: 14.0 },
+  { id: 'drake_peak_2', type: 'drake', homeX: 38, homeZ: -43, patrolRadius: 6.5, leashRadius: 14.0 },
 ];
 

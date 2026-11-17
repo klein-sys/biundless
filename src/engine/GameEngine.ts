@@ -40,6 +40,7 @@ import {
 import { GameUI, type TelemetrySnapshot } from '../ui/GameUI';
 import {
   GATHERING_NODES,
+  getBossArrivalPoint,
   getRegionAt,
   getTerrainHeight,
   LANDMARK_BY_ID,
@@ -444,6 +445,7 @@ export class GameEngine {
       onStartGame: (isNewGame) => {
         if (isNewGame) {
           this.progression = resetProgression();
+          this.dialogueRunner.setProgressionState(this.progression);
           applyProgressionToPlayer(this.player, computeEffectiveStats(this.progression));
           this.seenBossCutscenes.clear();
           this.warpToLandmark('hub');
@@ -681,8 +683,7 @@ export class GameEngine {
 
   private warpToLandmark(target: BossId | 'hub'): void {
     const lm = LANDMARK_BY_ID[target];
-    const targetX = target === 'hub' ? 0 : lm.x;
-    const targetZ = target === 'hub' ? 4 : lm.z + 10;
+    const { x: targetX, z: targetZ } = target === 'hub' ? { x: 0, z: 4 } : getBossArrivalPoint(target);
     const targetY = getTerrainHeight(targetX, targetZ);
 
     this.playerPos.set(targetX, targetY, targetZ);
@@ -1164,11 +1165,11 @@ export class GameEngine {
       if (this.nearbyNpc) {
         this.ui.showInteractPrompt(`Talk to ${this.nearbyNpc.name}`);
       } else if (this.nearbyGatherNode) {
-        this.ui.showInteractPrompt(`Harvest ${this.nearbyGatherNode.def.name} [F]`);
+        this.ui.showInteractPrompt(`Harvest ${this.nearbyGatherNode.def.name}`);
       } else if (this.nearbySignpost) {
-        this.ui.showInteractPrompt(`Read Trailhead Guide [F]`);
+        this.ui.showInteractPrompt('Read Trailhead Guide');
       } else if (nearFountain) {
-        this.ui.showInteractPrompt(`Rest at Sanctuary Fountain [F]`);
+        this.ui.showInteractPrompt('Rest at Sanctuary Fountain');
       } else {
         this.ui.hideInteractPrompt();
       }

@@ -7,6 +7,7 @@ import {
   getTerrainHeight,
   getTrailBlend,
   LANDMARK_BY_ID,
+  TOWN_GATES,
   WORLD_PLAYABLE_RADIUS,
   WORLD_SIZE,
 } from '../world/SunlitValley';
@@ -128,7 +129,7 @@ export function createArenaEnvironment(): ArenaBundle {
     group.add(mtn);
   }
 
-  // 3. Continuous ~188x188 Rolling Emerald Meadow Terrain Mesh
+  // 3. Continuous rolling emerald meadow terrain
   const segs = 128;
   const terrainGeo = new THREE.PlaneGeometry(WORLD_SIZE, WORLD_SIZE, segs, segs);
   terrainGeo.rotateX(-Math.PI / 2);
@@ -4780,21 +4781,20 @@ export function createSolsticeHavenWallComplex(): {
   const obstacles: VillageObstacle[] = [];
 
   // --- 1. Gatehouses ---
-  // South Gatehouse: (0, 22.5), rotY = 0 (facing south toward valley)
-  const southGate = createTownGatehouse({ x: 0, z: 22.5, rotationY: 0, isNorth: false });
+  const { south, north } = TOWN_GATES;
+  const southGate = createTownGatehouse({ ...south, rotationY: 0, isNorth: false });
   group.add(southGate.group);
   updaters.push(southGate.update);
   // Left and Right tower obstacles for south gate (passage at x in [-1.8, 1.8] remains open)
-  obstacles.push({ x: -4.0, z: 22.5, radius: 2.1 });
-  obstacles.push({ x: 4.0, z: 22.5, radius: 2.1 });
+  obstacles.push({ x: south.x - 4, z: south.z, radius: 2.1 });
+  obstacles.push({ x: south.x + 4, z: south.z, radius: 2.1 });
 
-  // North Gatehouse: (0, -22.5), rotY = Math.PI (facing north toward mountains)
-  const northGate = createTownGatehouse({ x: 0, z: -22.5, rotationY: Math.PI, isNorth: true });
+  const northGate = createTownGatehouse({ ...north, rotationY: Math.PI, isNorth: true });
   group.add(northGate.group);
   updaters.push(northGate.update);
   // Left and Right tower obstacles for north gate (passage at x in [-1.8, 1.8] remains open)
-  obstacles.push({ x: -4.0, z: -22.5, radius: 2.1 });
-  obstacles.push({ x: 4.0, z: -22.5, radius: 2.1 });
+  obstacles.push({ x: north.x - 4, z: north.z, radius: 2.1 });
+  obstacles.push({ x: north.x + 4, z: north.z, radius: 2.1 });
 
   // --- 2. Bastion Watchtowers ---
   const bastionConfigs = [
@@ -4823,21 +4823,21 @@ export function createSolsticeHavenWallComplex(): {
     { x: number; z: number }
   ][] = [
     // North Gate West to NW Bastion
-    [{ x: -4.0, z: -22.5 }, { x: -21.0, z: -17.0 }],
+    [{ x: north.x - 4, z: north.z }, { x: -21.0, z: -17.0 }],
     // NW Bastion to West Flank
     [{ x: -21.0, z: -17.0 }, { x: -24.5, z: 0.0 }],
     // West Flank to SW Bastion
     [{ x: -24.5, z: 0.0 }, { x: -21.0, z: 17.0 }],
     // SW Bastion to South Gate West
-    [{ x: -21.0, z: 17.0 }, { x: -4.0, z: 22.5 }],
+    [{ x: -21.0, z: 17.0 }, { x: south.x - 4, z: south.z }],
     // South Gate East to SE Bastion
-    [{ x: 4.0, z: 22.5 }, { x: 21.0, z: 17.0 }],
+    [{ x: south.x + 4, z: south.z }, { x: 21.0, z: 17.0 }],
     // SE Bastion to East Flank
     [{ x: 21.0, z: 17.0 }, { x: 24.5, z: 0.0 }],
     // East Flank to NE Bastion
     [{ x: 24.5, z: 0.0 }, { x: 21.0, z: -17.0 }],
     // NE Bastion to North Gate East
-    [{ x: 21.0, z: -17.0 }, { x: 4.0, z: -22.5 }],
+    [{ x: 21.0, z: -17.0 }, { x: north.x + 4, z: north.z }],
   ];
 
   wallLinks.forEach(([p1, p2]) => {

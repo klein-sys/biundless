@@ -23,9 +23,10 @@ import {
   type DerivativeSigilId,
   type WorkedExampleSnapshot,
 } from '../math/trigDerivatives';
-import type { BiomeLandmark } from '../world/SunlitValley';
+import { BIOME_LANDMARKS, getBrookCenterZ, TOWN_GATES, VALLEY_ROADS, type BiomeLandmark } from '../world/SunlitValley';
 import type { DialogueChoice, DialogueNode } from '../dialogue/dialogueData';
 import {
+  BASE_MAX_HP,
   getInventoryCount,
   getLevelProgressFraction,
   hasSavedProgression,
@@ -177,7 +178,7 @@ export class GameUI {
         <div class="vitals-pod">
           <div class="vitals-row">
             <span class="hero-name">SPELLBLADE</span>
-            <span id="hp-num" class="vitals-num">160/160</span>
+            <span id="hp-num" class="vitals-num">${BASE_MAX_HP}/${BASE_MAX_HP}</span>
           </div>
           <div class="bar-pill hp-track"><div id="hp-fill" class="bar-fill hp" style="width:100%"></div></div>
           <div class="bar-pill stam-track"><div id="stamina-fill" class="bar-fill stam" style="width:100%"></div></div>
@@ -216,7 +217,7 @@ export class GameUI {
           </svg>
           <span class="btn-subtext">3RD</span>
         </button>
-        <button id="btn-menu" class="circle-btn" title="Menu & Settings (Esc / M)">
+        <button id="btn-menu" class="circle-btn" title="Menu & Settings (Esc)">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M4 6h16M4 12h16M4 18h16"/>
           </svg>
@@ -621,7 +622,7 @@ export class GameUI {
             and trigger devastating Critical Staggers.
           </p>
           <div class="controls-cheat">
-            <div><strong>Desktop:</strong> WASD Move · Shift Sprint · Space Jump · Ctrl/C Dash · LMB Strike · RMB/E Cast Sigil · 1–6 / Q Wheel · V POV · Esc Menu</div>
+            <div><strong>Desktop:</strong> WASD Move · Shift Sprint · Space Jump · Ctrl/C Dash · LMB Strike · RMB/E Cast Sigil · 1–6 / Q Wheel · F Interact · M Atlas · V POV · Esc Menu</div>
             <div><strong>Mobile:</strong> Smooth Left Stick · Right Drag Camera · Responsive Strike / Cast / Jump / Dash buttons</div>
           </div>
           <div class="title-actions">
@@ -1070,7 +1071,7 @@ export class GameUI {
     const controls: ControlSchemeMode[] = ['auto', 'desktop', 'mobile'];
     const activeTab = initialTab;
 
-    const maxHp = player ? computeEffectiveStat(player, 'maxHp') : 160;
+    const maxHp = player ? computeEffectiveStat(player, 'maxHp') : BASE_MAX_HP;
     const maxStam = player ? computeEffectiveStat(player, 'maxStamina') : 100;
     const progSummary = progression ? getProgressionSummary(progression) : 'Adventurer';
     const xpPct = progression ? (getLevelProgressFraction(progression) * 100).toFixed(0) : '0';
@@ -1104,7 +1105,7 @@ export class GameUI {
             </div>
 
             <div class="hero-pause-stats">
-              <div class="stat-pill"><span class="stat-lbl">HP:</span> <strong>${player ? Math.max(0, player.hp) : 160}/${maxHp}</strong></div>
+              <div class="stat-pill"><span class="stat-lbl">HP:</span> <strong>${player ? Math.max(0, player.hp) : maxHp}/${maxHp}</strong></div>
               <div class="stat-pill"><span class="stat-lbl">Stamina:</span> <strong>${player ? Math.round(player.stamina) : 100}/${maxStam}</strong></div>
               <div class="stat-pill"><span class="stat-lbl">Flasks:</span> <strong>${player ? player.flasksRemaining : maxFlasks}/${maxFlasks}</strong></div>
               <div class="stat-pill"><span class="stat-lbl">Harmonics:</span> <strong>${harmonicsMult}×</strong></div>
@@ -1891,39 +1892,41 @@ export class GameUI {
     ctx.arc(cx, cy, r * 0.88, 0, Math.PI * 2);
     ctx.stroke();
 
-    // Sunlit brook channel (curved line with light blue glow)
+    // Sunlit brook and gate roads
     ctx.strokeStyle = 'rgba(56, 189, 248, 0.45)';
-    ctx.lineWidth = 4;
+    ctx.lineWidth = 3;
     ctx.beginPath();
-    ctx.moveTo(w * 0.1, h * 0.42);
-    ctx.quadraticCurveTo(cx, h * 0.45, w * 0.9, h * 0.43);
+    for (let x = -26; x <= 26; x += 4) {
+      const { u, v } = worldToMapNormalized(x, getBrookCenterZ(x));
+      if (x === -26) ctx.moveTo(u * w, v * h);
+      else ctx.lineTo(u * w, v * h);
+    }
     ctx.stroke();
 
-    // Solstice Haven Town Wall Perimeter Circle (center radius ~15px)
+    // Solstice Haven town wall
     ctx.strokeStyle = 'rgba(251, 191, 36, 0.7)';
     ctx.lineWidth = 1.6;
     ctx.beginPath();
-    ctx.arc(cx, cy, 14, 0, Math.PI * 2);
+    ctx.arc(cx, cy, (worldToMapNormalized(0, TOWN_GATES.south.z).v - 0.5) * h, 0, Math.PI * 2);
     ctx.stroke();
 
-    // Landmark dots
-    // Solstice Haven Hub (0, 0)
-    ctx.fillStyle = '#fbbf24';
-    ctx.beginPath();
-    ctx.arc(cx, cy, 3, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Boss Landmarks: Witch (-52, -42), Lich (12, 54), Dragon (48, -48)
-    const landmarks = [
-      { x: -52, z: -42, color: '#38bdf8' },
-      { x: 12, z: 54, color: '#c084fc' },
-      { x: 48, z: -48, color: '#f59e0b' },
-    ];
-    for (const lm of landmarks) {
-      const { u, v } = worldToMapNormalized(lm.x, lm.z);
-      ctx.fillStyle = lm.color;
+    ctx.strokeStyle = 'rgba(230, 184, 92, 0.7)';
+    ctx.lineWidth = 1.4;
+    for (const road of VALLEY_ROADS) {
       ctx.beginPath();
-      ctx.arc(u * w, v * h, 3.5, 0, Math.PI * 2);
+      road.forEach(({ x, z }, i) => {
+        const { u, v } = worldToMapNormalized(x, z);
+        if (i === 0) ctx.moveTo(u * w, v * h);
+        else ctx.lineTo(u * w, v * h);
+      });
+      ctx.stroke();
+    }
+
+    for (const lm of BIOME_LANDMARKS) {
+      const { u, v } = worldToMapNormalized(lm.x, lm.z);
+      ctx.fillStyle = lm.accentHex;
+      ctx.beginPath();
+      ctx.arc(u * w, v * h, lm.id === 'hub' ? 3 : 3.5, 0, Math.PI * 2);
       ctx.fill();
     }
 

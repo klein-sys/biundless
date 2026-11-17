@@ -607,6 +607,16 @@ body {
   backdrop-filter: blur(8px);
 }
 
+#ui-root:has(.mobile-controls:not(.hidden)) .hud-bottom-right {
+  top: max(8px, env(safe-area-inset-top));
+  right: max(172px, calc(env(safe-area-inset-right) + 168px));
+  bottom: auto;
+}
+
+#ui-root:has(.mobile-controls:not(.hidden)) .sigil-pips-row {
+  display: none;
+}
+
 .sigil-pip {
   position: relative;
   width: 36px;

@@ -7,6 +7,7 @@ import {
   type TrigFunctionId,
   type WorkedExampleSnapshot,
 } from '../math/trigDerivatives';
+import { BASE_MAX_HP } from '../rpg/progressionSystem';
 
 export type StatKey = 'maxHp' | 'maxStamina' | 'attack' | 'defense';
 
@@ -68,7 +69,7 @@ const STAMINA_REGEN_PER_SEC = 26;
 
 export function createInitialPlayerState(): PlayerState {
   return {
-    hp: 160,
+    hp: BASE_MAX_HP,
     stamina: 100,
     flasksRemaining: 3,
     maxFlasks: 3,
@@ -83,7 +84,7 @@ export function createInitialPlayerState(): PlayerState {
     godMode: false,
     infiniteStamina: false,
     baseStats: {
-      maxHp: 160,
+      maxHp: BASE_MAX_HP,
       maxStamina: 100,
       attack: 28,
       defense: 18,
@@ -125,7 +126,7 @@ export function applyProgressionToPlayer(
     maxFlasks?: number;
   },
 ): void {
-  const oldMaxHp = player.baseStats.maxHp;
+  const oldMaxHp = computeEffectiveStat(player, 'maxHp');
   player.baseStats.maxHp = stats.maxHp;
   player.baseStats.maxStamina = stats.maxStamina;
   player.resonanceBonusMultiplier = stats.resonanceMultiplier;
@@ -142,9 +143,8 @@ export function applyProgressionToPlayer(
       player.flasksRemaining = stats.maxFlasks;
     }
   }
-  if (stats.maxHp > oldMaxHp) {
-    player.hp = Math.min(stats.maxHp, player.hp + (stats.maxHp - oldMaxHp));
-  }
+  const maxHp = computeEffectiveStat(player, 'maxHp');
+  player.hp = Math.min(maxHp, player.hp + Math.max(0, maxHp - oldMaxHp));
 }
 
 export function tryStartDodge(player: PlayerState, dir: { x: number; z: number }): boolean {

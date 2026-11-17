@@ -48,7 +48,7 @@ export const QUESTS: Record<string, QuestDefinition> = {
     title: 'Tame the Asymptote',
     bossTargetId: 'lich',
     requiredDerivative: 'd/dθ(tan θ) = sec² θ',
-    description: 'Cross the arched bridge north to the Sunken Sun-Ruins. Malakor\'s energy diverges infinitely at asymptotes; shatter his ward with sec² θ.',
+    description: 'Leave by the south gate and follow the road to the Sunken Sun-Ruins. Malakor\'s energy diverges infinitely at asymptotes; shatter his ward with sec² θ.',
     rewardXp: 400,
     rewardText: '400 Astral Insight (XP) + 1 Stat Point',
   },
@@ -272,7 +272,7 @@ export const DIALOGUE_NODES: Record<string, DialogueNode> = {
     speakerName: 'Lyra the Herbalist',
     speakerTitle: 'Flora Botanist & Potion Brewer',
     speakerRole: 'herbalist',
-    text: 'In the Whispering Glade to the northwest, moonlit bellflowers blossom in harmonic waves. Malakor\'s crypt to the north has sun-ruin moss, and near the dragon crags you can find amber sun-petals. Bring me 2 Moonbell blossoms and 1 Phase Essence from the glade wolves, and I can expand your Crimson Flask satchel up to 5 charges.',
+    text: 'Cross the north gate bridge and take the left fork to Whispering Glade. Two Moonbell blossoms grow along the trail before Vespera\'s grove. The Phase Wolves there carry Phase Essence. Attune to cos θ to break their sin θ wards. Bring me 2 Moonbell and 1 Phase Essence for another Crimson Flask charge.',
     choices: [
       {
         text: 'Brew Crimson Draught now.',
@@ -290,7 +290,7 @@ export const DIALOGUE_NODES: Record<string, DialogueNode> = {
     speakerName: 'Eldrin the Scout',
     speakerTitle: 'Frontier Ranger & Trailhead Guide',
     speakerRole: 'scout',
-    text: 'Hail, adventurer! I scout the valley perimeter. The cobblestone trails lead directly from this plaza to all three boss landmarks. Follow the northwest path for the witch, the northern bridge path for the lich, and the northeast uphill trail for the dragon.',
+    text: 'Hail, adventurer! Follow the road through the south gate to the Sunken Sun-Ruins. For Whispering Glade or Skyridge Peak, cross the bridge at the north gate. The left fork leads to the glade, and the right fork climbs to the peak.',
     choices: [
       {
         text: 'Any survival advice for the wilds?',

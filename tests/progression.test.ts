@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import { applyProgressionToPlayer, computeEffectiveStat, createInitialPlayerState } from '../src/combat/resonanceCombat';
 import {
   createDefaultProgression,
   getXpForNextLevel,
@@ -52,6 +53,20 @@ describe('RPG Progression System', () => {
     expect(stats.maxHp).toBe(100);
     expect(stats.maxStamina).toBe(100);
     expect(stats.resonanceMultiplier).toBe(1.0);
+  });
+
+  it('starts at full health and clamps excess health when applying lower progression stats', () => {
+    const player = createInitialPlayerState();
+    const saved = createDefaultProgression();
+    saved.vigor = 4;
+    applyProgressionToPlayer(player, computeEffectiveStats(saved));
+    expect(player.hp).toBe(computeEffectiveStat(player, 'maxHp'));
+
+    applyProgressionToPlayer(player, computeEffectiveStats(createDefaultProgression()));
+    expect(player.hp).toBe(100);
+    player.hp = 50;
+    applyProgressionToPlayer(player, computeEffectiveStats(createDefaultProgression()));
+    expect(player.hp).toBe(50);
   });
 
   it('correctly tracks XP and handles level-ups with stat points awarded', () => {

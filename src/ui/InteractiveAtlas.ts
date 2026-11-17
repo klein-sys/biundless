@@ -1,4 +1,11 @@
-import { BIOME_LANDMARKS, type BiomeLandmark, WORLD_PLAYABLE_RADIUS } from '../world/SunlitValley';
+import {
+  BIOME_LANDMARKS,
+  getBrookCenterZ,
+  TOWN_GATES,
+  VALLEY_ROADS,
+  WORLD_PLAYABLE_RADIUS,
+  type BiomeLandmark,
+} from '../world/SunlitValley';
 import type { ProgressionState } from '../rpg/progressionSystem';
 
 export interface MapPoint {
@@ -30,6 +37,22 @@ export function mapNormalizedToWorld(u: number, v: number): { x: number; z: numb
     z: v * (maxR * 2) - maxR,
   };
 }
+
+function toSvgPoints(points: readonly { x: number; z: number }[]): string {
+  return points.map(({ x, z }) => {
+    const { u, v } = worldToMapNormalized(x, z);
+    return `${(u * 1000).toFixed(2)},${(v * 1000).toFixed(2)}`;
+  }).join(' ');
+}
+
+const brookPoints = toSvgPoints(Array.from({ length: 14 }, (_, i) => {
+  const x = -26 + i * 4;
+  return { x, z: getBrookCenterZ(x) };
+}));
+const townRadius = (worldToMapNormalized(0, TOWN_GATES.south.z).v - 0.5) * 1000;
+const roadShapes = VALLEY_ROADS.map((road) =>
+  `<polyline points="${toSvgPoints(road)}" fill="none" stroke="#d97706" stroke-width="4" stroke-dasharray="8 6" stroke-linejoin="round" />`,
+).join('');
 
 export interface AtlasHandlers {
   onWarp: (landmarkId: 'hub' | 'witch' | 'lich' | 'dragon') => void;
@@ -180,20 +203,13 @@ export class InteractiveAtlas {
             <rect width="1000" height="1000" fill="#0b1320" />
             <circle cx="500" cy="500" r="460" fill="url(#valleyGlow)" stroke="#334155" stroke-width="3" stroke-dasharray="12 6" />
 
-            <!-- Sunlit Brook Channel (Curves across northern valley) -->
-            <path d="M 120 420 Q 350 460 500 440 T 880 430" fill="none" stroke="#38bdf8" stroke-width="12" stroke-linecap="round" opacity="0.65" />
-            <path d="M 120 420 Q 350 460 500 440 T 880 430" fill="none" stroke="#bae6fd" stroke-width="4" stroke-linecap="round" opacity="0.85" />
-
-            <!-- Trail Paths to Landmarks -->
-            <!-- Path to Whispering Glade (SW) -->
-            <path d="M 500 500 Q 350 420 210 265" fill="none" stroke="#d97706" stroke-width="4" stroke-dasharray="8 6" opacity="0.75" />
-            <!-- Path to Sunken Sun-Ruins (NNE) -->
-            <path d="M 500 500 Q 520 650 565 800" fill="none" stroke="#d97706" stroke-width="4" stroke-dasharray="8 6" opacity="0.75" />
-            <!-- Path to Skyridge Peak (SE) -->
-            <path d="M 500 500 Q 640 400 765 230" fill="none" stroke="#d97706" stroke-width="4" stroke-dasharray="8 6" opacity="0.75" />
+            <!-- Sunlit Brook Channel -->
+            <polyline points="${brookPoints}" fill="none" stroke="#38bdf8" stroke-width="12" stroke-linecap="round" opacity="0.65" />
+            <polyline points="${brookPoints}" fill="none" stroke="#bae6fd" stroke-width="4" stroke-linecap="round" opacity="0.85" />
 
             <!-- Solstice Haven Castle Wall Perimeter Ring -->
-            <circle cx="500" cy="500" r="75" fill="rgba(245, 238, 222, 0.15)" stroke="#fbbf24" stroke-width="3" />
+            <circle cx="500" cy="500" r="${townRadius}" fill="rgba(245, 238, 222, 0.15)" stroke="#fbbf24" stroke-width="3" />
+            ${roadShapes}
             <circle cx="500" cy="500" r="14" fill="#60a5fa" />
           </svg>
 

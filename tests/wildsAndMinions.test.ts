@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import * as THREE from 'three';
 import {
   addInventoryItem,
@@ -8,6 +8,7 @@ import {
   createDefaultProgression,
   getInventoryCount,
   loadProgression,
+  saveProgression,
   upgradeFlask,
   upgradeWeapon,
 } from '../src/rpg/progressionSystem';
@@ -395,25 +396,46 @@ describe('Wild Minions, Gathering Nodes & Progression System', () => {
       expect(toastMsg).toContain('SPELLBLADE REFINED');
     });
 
-    it('allows Lyra the Herbalist to brew Crimson Draught when materials are provided', () => {
-      const progression = createDefaultProgression();
-      addInventoryItem(progression, 'moonbell', 2);
-      addInventoryItem(progression, 'phaseEssence', 1);
-
-      let toastMsg = '';
-      const runner = new DialogueRunner(progression, {
-        onShowToast: (msg) => { toastMsg = msg; },
-        onStateChanged: () => {},
+    it('brews and reloads Lyra’s first flask upgrade with materials earned on the Glade road', () => {
+      const storage = new Map<string, string>();
+      vi.stubGlobal('localStorage', {
+        getItem: (key: string) => storage.get(key) ?? null,
+        setItem: (key: string, value: string) => storage.set(key, value),
       });
+      try {
+        const priorRun = createDefaultProgression();
+        const progression = createDefaultProgression();
+        const showToast = vi.fn();
+        const runner = new DialogueRunner(priorRun, {
+          onShowToast: showToast,
+          onStateChanged: () => saveProgression(progression),
+        });
+        runner.setProgressionState(progression);
 
-      runner.startDialogue('herbalist');
-      const choices = runner.getAvailableChoices();
-      const brewChoice = choices.find((c) => c.action === 'upgrade_flask');
-      expect(brewChoice).toBeDefined();
+        for (const node of GATHERING_NODES.filter((node) => node.type === 'moonbell' && node.id.startsWith('node_glade_'))) {
+          addInventoryItem(progression, node.type);
+        }
+        const wolf = createMinionRuntime('wolf_glade_1', 'wolf', -18, -37.5);
+        const hit = applyDamageToMinion(wolf, 28, 'cos', 1, {
+          onDamagePlayer: () => {},
+          onMinionDefeated: (_wolf, _resonant, item, count) => addInventoryItem(progression, item, count),
+        });
+        expect(hit.defeated).toBe(true);
 
-      runner.selectChoice(brewChoice!);
-      expect(progression.maxFlasks).toBe(4);
-      expect(toastMsg).toContain('CRIMSON DRAUGHT BREWED');
+        runner.startDialogue('herbalist');
+        const brewChoice = runner.getAvailableChoices().find((choice) => choice.action === 'upgrade_flask');
+        expect(brewChoice).toBeDefined();
+        runner.selectChoice(brewChoice!);
+
+        const saved = loadProgression();
+        expect(saved.maxFlasks).toBe(4);
+        expect(getInventoryCount(saved, 'moonbell')).toBe(0);
+        expect(getInventoryCount(saved, 'phaseEssence')).toBe(1);
+        expect(priorRun.maxFlasks).toBe(3);
+        expect(showToast).toHaveBeenCalledWith(expect.stringContaining('CRIMSON DRAUGHT BREWED'));
+      } finally {
+        vi.unstubAllGlobals();
+      }
     });
   });
 
