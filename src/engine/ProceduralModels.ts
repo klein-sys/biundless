@@ -46,6 +46,7 @@ export interface WaypointCrystal {
 export interface ArenaBundle {
   readonly glade: WhisperingGlade;
   readonly group: THREE.Group;
+  readonly terrainMesh: THREE.Mesh;
   readonly fogGates: { readonly bossId: BossId; readonly group: THREE.Group; readonly curtainMat: THREE.ShaderMaterial; readonly position: THREE.Vector3 }[];
   readonly waypoints: WaypointCrystal[];
   readonly emberPoints: THREE.Points;
@@ -679,6 +680,7 @@ export function createArenaEnvironment(): ArenaBundle {
   return {
     group,
     glade,
+    terrainMesh,
     fogGates,
     waypoints,
     emberPoints,

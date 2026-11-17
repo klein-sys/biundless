@@ -16,6 +16,7 @@ import {
 } from '../bosses/bossAI';
 import { BOSS_CONFIGS, BOSS_ORDER, type BossId } from '../bosses/bossDefinitions';
 import { DualCameraController } from '../camera/DualCameraController';
+import { getFirstProjectileHit, getResonanceDirection } from '../combat/resonanceAim';
 import {
   applyDamageToPlayer,
   applyProgressionToPlayer,
@@ -97,12 +98,19 @@ import type { DialogueChoice } from '../dialogue/dialogueData';
 
 interface ActiveProjectile {
   mesh: THREE.Mesh;
-  vx: number;
-  vz: number;
+  velocity: THREE.Vector3;
   life: number;
   damage: number;
   fromPlayer: boolean;
 }
+
+type ResonanceTarget =
+  | { hitbox: THREE.Sphere; boss: BossRuntime }
+  | { hitbox: THREE.Sphere; minion: MinionRuntime };
+
+const RESONANCE_SPEED = 28;
+const RESONANCE_LIFETIME = 1.5;
+const SCREEN_CENTER = new THREE.Vector2();
 
 interface ActiveShockwave {
   mesh: THREE.Mesh;
@@ -121,6 +129,7 @@ export class GameEngine {
   private readonly bloomPass: UnrealBloomPass;
   private readonly scene: THREE.Scene;
   private readonly camera: THREE.PerspectiveCamera;
+  private readonly aimRaycaster = new THREE.Raycaster();
   private readonly timer = new THREE.Timer();
   private readonly arena: ArenaBundle;
   private readonly village: SolsticeHavenBundle;
@@ -1463,26 +1472,44 @@ export class GameEngine {
     mesh.position.set(this.playerPos.x, this.playerPos.y + 1.5, this.playerPos.z);
     this.scene.add(mesh);
 
-    let dirX = -Math.sin(this.cameraCtrl.yaw);
-    let dirZ = -Math.cos(this.cameraCtrl.yaw);
-    const activeBoss = this.getActiveBoss();
-    if (activeBoss && activeBoss.phase !== 'DEFEATED' && activeBoss.phase !== 'IDLE_GUARD') {
-      const dx = activeBoss.x - this.playerPos.x;
-      const dz = activeBoss.z - this.playerPos.z;
-      const len = Math.max(0.01, Math.hypot(dx, dz));
-      dirX = dx / len;
-      dirZ = dz / len;
-    }
-
+    const targets = this.getResonanceTargets();
+    const lockedBoss = this.cameraCtrl.lockedOn ? targets.find((target) => 'boss' in target) : undefined;
+    const view = this.aimRaycaster;
+    view.setFromCamera(SCREEN_CENTER, this.camera);
+    view.far = RESONANCE_SPEED * RESONANCE_LIFETIME + view.ray.origin.distanceTo(mesh.position);
+    const ground = lockedBoss ? undefined : view.intersectObject(this.arena.terrainMesh, false)[0];
+    const direction = getResonanceDirection(
+      view.ray,
+      mesh.position,
+      ground?.distance ?? view.far,
+      targets,
+      lockedBoss?.hitbox.center,
+    );
     this.projectiles.push({
       mesh,
-      vx: dirX * 28,
-      vz: dirZ * 28,
-      life: 1.5,
+      velocity: direction.multiplyScalar(RESONANCE_SPEED),
+      life: RESONANCE_LIFETIME,
       damage: 0,
       fromPlayer: true,
     });
     this.audio.playSlash(2);
+  }
+
+  private getResonanceTargets(): ResonanceTarget[] {
+    const targets: ResonanceTarget[] = [];
+    const boss = this.getActiveBoss();
+    if (boss && boss.phase !== 'DEFEATED' && boss.phase !== 'IDLE_GUARD') {
+      targets.push({ boss, hitbox: new THREE.Sphere(new THREE.Vector3(boss.x, boss.y + 1.8, boss.z), 2.5) });
+    }
+    for (const minion of this.minions) {
+      if (minion.state === 'DEFEATED') continue;
+      const centerHeight = minion.minionType === 'wolf' ? 0.8 : 1.3;
+      targets.push({
+        minion,
+        hitbox: new THREE.Sphere(new THREE.Vector3(minion.x, minion.y + centerHeight, minion.z), 1.25),
+      });
+    }
+    return targets;
   }
 
   private resolvePlayerProjectileHit(boss: BossRuntime): void {
@@ -1588,8 +1615,7 @@ export class GameEngine {
         this.scene.add(orb);
         this.projectiles.push({
           mesh: orb,
-          vx: ev.dirX * ev.speed,
-          vz: ev.dirZ * ev.speed,
+          velocity: new THREE.Vector3(ev.dirX * ev.speed, 0, ev.dirZ * ev.speed),
           life: 3.2,
           damage: ev.damage,
           fromPlayer: false,
@@ -1614,8 +1640,7 @@ export class GameEngine {
         this.scene.add(bolt);
         this.projectiles.push({
           mesh: bolt,
-          vx: dirX * 16,
-          vz: dirZ * 16,
+          velocity: new THREE.Vector3(dirX * 16, 0, dirZ * 16),
           life: 2.2,
           damage: ev.damage,
           fromPlayer: false,
@@ -1724,12 +1749,42 @@ export class GameEngine {
     });
   }
 
+  private stepResonanceProjectile(projectile: ActiveProjectile, dt: number): boolean {
+    const distance = RESONANCE_SPEED * dt;
+    const ray = new THREE.Ray(projectile.mesh.position, projectile.velocity.clone().divideScalar(RESONANCE_SPEED));
+    const end = ray.at(distance, new THREE.Vector3());
+    const groundDepth = getTerrainHeight(end.x, end.z) - end.y;
+    let travelDistance = distance;
+    if (groundDepth > 0) {
+      const start = ray.origin;
+      const clearance = Math.max(0, start.y - getTerrainHeight(start.x, start.z));
+      travelDistance *= clearance / (clearance + groundDepth);
+    }
+    const hit = getFirstProjectileHit(ray, travelDistance, this.getResonanceTargets());
+    projectile.mesh.position.copy(ray.at(hit?.distance ?? travelDistance, end));
+    if (!hit) return groundDepth > 0;
+
+    if ('boss' in hit.target) this.resolvePlayerProjectileHit(hit.target.boss);
+    else this.resolvePlayerProjectileHitMinion(hit.target.minion);
+    return true;
+  }
+
   private stepProjectilesAndShockwaves(dt: number): void {
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
       const p = this.projectiles[i];
+      let hit = false;
+      if (p.fromPlayer) {
+        hit = this.stepResonanceProjectile(p, Math.min(dt, p.life));
+      } else {
+        p.mesh.position.addScaledVector(p.velocity, dt);
+        const d = Math.hypot(p.mesh.position.x - this.playerPos.x, p.mesh.position.z - this.playerPos.z);
+        if (d < 1.1) {
+          const dealt = applyDamageToPlayer(this.player, p.damage);
+          if (dealt > 0) this.cameraCtrl.addTrauma(0.35);
+          hit = true;
+        }
+      }
       p.life -= dt;
-      p.mesh.position.x += p.vx * dt;
-      p.mesh.position.z += p.vz * dt;
       p.mesh.rotation.y += dt * 6;
 
       if (Math.random() < 0.4) {
@@ -1737,37 +1792,7 @@ export class GameEngine {
         this.vfx.spawnTrail(p.mesh.position, col, p.fromPlayer ? 0.34 : 0.28);
       }
 
-      let remove = p.life <= 0;
-      const activeBoss = this.getActiveBoss();
-      if (p.fromPlayer && activeBoss && activeBoss.phase !== 'DEFEATED' && activeBoss.phase !== 'IDLE_GUARD') {
-        const d = Math.hypot(p.mesh.position.x - activeBoss.x, p.mesh.position.z - activeBoss.z);
-        if (d < 2.5) {
-          this.resolvePlayerProjectileHit(activeBoss);
-          remove = true;
-        }
-      } else if (!p.fromPlayer) {
-        const d = Math.hypot(p.mesh.position.x - this.playerPos.x, p.mesh.position.z - this.playerPos.z);
-        if (d < 1.1) {
-          const dealt = applyDamageToPlayer(this.player, p.damage);
-          if (dealt > 0) this.cameraCtrl.addTrauma(0.35);
-          remove = true;
-        }
-      }
-
-      // Check minion resonance projectile collisions
-      if (p.fromPlayer && !remove) {
-        for (const minion of this.minions) {
-          if (minion.state === 'DEFEATED') continue;
-          const d = Math.hypot(p.mesh.position.x - minion.x, p.mesh.position.z - minion.z);
-          if (d < 2.2) {
-            this.resolvePlayerProjectileHitMinion(minion);
-            remove = true;
-            break;
-          }
-        }
-      }
-
-      if (remove) {
+      if (hit || p.life <= 0) {
         this.scene.remove(p.mesh);
         p.mesh.geometry.dispose();
         (p.mesh.material as THREE.Material).dispose();
