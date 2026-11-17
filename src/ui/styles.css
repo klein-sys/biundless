@@ -2120,37 +2120,6 @@ body {
   background: rgba(0, 0, 0, 0.4);
 }
 
-.worked-step {
-  background: rgba(200, 150, 62, 0.06);
-  border-left: 3px solid var(--adv-gold);
-  border-radius: 0 8px 8px 0;
-  padding: 8px 12px;
-  margin-bottom: 8px;
-  font-size: 13.5px;
-}
-
-.step-num {
-  display: block;
-  font-family: var(--font-display);
-  font-size: 10.5px;
-  font-weight: 700;
-  color: var(--adv-gold-dim);
-  margin-bottom: 2px;
-}
-
-.worked-step code {
-  font-family: var(--font-mono);
-  font-size: 12.5px;
-  color: #a43a05;
-}
-
-.step-details {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 2px;
-  margin-top: 4px;
-}
-
 .crit-badge {
   color: #c97f00;
   font-weight: 700;
