@@ -16,6 +16,7 @@ import {
   DERIVATIVE_SIGILS,
   evaluateExactDerivative,
   evaluateTrig,
+  expectedDerivativeFor,
   formatThetaPi,
   generateWavePlotData,
   isCriticalPoint,
@@ -137,6 +138,7 @@ export class GameUI {
 
   private activeSigilPill!: HTMLElement;
   private sigilPipButtons = new Map<DerivativeSigilId, HTMLElement>();
+  private radialSigilButtons = new Map<DerivativeSigilId, HTMLElement>();
 
   private toastTimeout: number | null = null;
   private currentRegionId: string | null = null;
@@ -505,6 +507,7 @@ export class GameUI {
           <path d="${SIGIL_SVG_PATHS[sigil.id]}" fill="none" stroke="${sigil.accentHex}" stroke-width="2.4" stroke-linecap="round"/>
         </svg>
         <span class="pip-name">${sigil.label}</span>
+        <span class="sigil-match-label">Match</span>
       `;
       pip.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -529,6 +532,7 @@ export class GameUI {
           <path d="${SIGIL_SVG_PATHS[sigil.id]}" fill="none" stroke="${sigil.accentHex}" stroke-width="2.4" stroke-linecap="round"/>
         </svg>
         <span style="color:${sigil.accentHex}">${sigil.label}</span>
+        <span class="sigil-match-label">Match</span>
       `;
       node.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -536,6 +540,7 @@ export class GameUI {
         this.handlers.onCloseWheel();
       });
       inner.appendChild(node);
+      this.radialSigilButtons.set(sigil.id, node);
     });
 
     this.radialWheel.addEventListener('click', () => this.handlers.onCloseWheel());
@@ -781,6 +786,11 @@ export class GameUI {
             </div>
 
             <div class="setting-row inline-row">
+              <span class="setting-title">Guided math</span>
+              <button id="sidebar-guided-math" class="pill-btn ${this.currentSettings.guidedMath ? 'active' : ''}" aria-label="Guided math" aria-pressed="${this.currentSettings.guidedMath}">${this.currentSettings.guidedMath ? 'ON' : 'OFF'}</button>
+            </div>
+
+            <div class="setting-row inline-row">
               <span class="setting-title">Procedural Audio</span>
               <button id="sidebar-opt-audio" class="pill-btn ${this.currentSettings.audioEnabled ? 'active' : ''}">
                 ${this.currentSettings.audioEnabled ? 'ON' : 'MUTED'}
@@ -842,6 +852,12 @@ export class GameUI {
 
     this.titleOverlay.querySelector('#sidebar-opt-fps')?.addEventListener('click', () => {
       this.currentSettings = { ...this.currentSettings, showFps: !this.currentSettings.showFps };
+      this.handlers.onUpdateSettings(this.currentSettings);
+      this.renderTitleSettingsView();
+    });
+
+    this.titleOverlay.querySelector('#sidebar-guided-math')?.addEventListener('click', () => {
+      this.currentSettings = { ...this.currentSettings, guidedMath: !this.currentSettings.guidedMath };
       this.handlers.onUpdateSettings(this.currentSettings);
       this.renderTitleSettingsView();
     });
@@ -1242,6 +1258,11 @@ export class GameUI {
           </div>
 
           <div class="setting-row">
+            <span class="setting-title">Guided math</span>
+            <button id="opt-guided-math" class="pill-btn ${settings.guidedMath ? 'active' : ''}" aria-label="Guided math" aria-pressed="${settings.guidedMath}">${settings.guidedMath ? 'ON' : 'OFF'}</button>
+          </div>
+
+          <div class="setting-row">
             <span class="setting-title">Procedural Audio</span>
             <button id="opt-audio" class="pill-btn ${settings.audioEnabled ? 'active' : ''}">${settings.audioEnabled ? 'ON' : 'MUTED'}</button>
           </div>
@@ -1513,6 +1534,12 @@ export class GameUI {
       this.openSettingsModal(next, player, boss, freezeTheta, telemetry, 'gameplay', progression);
     });
 
+    this.settingsModal.querySelector('#opt-guided-math')?.addEventListener('click', () => {
+      const next = { ...settings, guidedMath: !settings.guidedMath };
+      this.handlers.onUpdateSettings(next);
+      this.openSettingsModal(next, player, boss, freezeTheta, telemetry, 'gameplay', progression);
+    });
+
     this.settingsModal.querySelector('#opt-audio')!.addEventListener('click', () => {
       const next = { ...settings, audioEnabled: !settings.audioEnabled };
       this.handlers.onUpdateSettings(next);
@@ -1722,20 +1749,23 @@ export class GameUI {
     medPath.setAttribute('d', SIGIL_SVG_PATHS[player.selectedSigil]);
     medPath.setAttribute('stroke', sigilMeta.accentHex);
 
-    for (const [id, btn] of this.sigilPipButtons) {
-      btn.classList.toggle('active', id === player.selectedSigil);
+    const isBossEngaged = !!boss && boss.phase !== 'IDLE_GUARD' && boss.phase !== 'DEFEATED';
+    const recommended = settings.guidedMath && isBossEngaged ? expectedDerivativeFor(boss.activeFunction) : null;
+    for (const buttons of [this.sigilPipButtons, this.radialSigilButtons]) {
+      for (const [id, button] of buttons) {
+        const selected = id === player.selectedSigil;
+        button.classList.toggle('active', selected);
+        button.classList.toggle('sigil-recommended', id === recommended);
+        button.setAttribute('aria-pressed', String(selected));
+      }
     }
 
     // 4. Region Banner update
-    const isBossEngaged = !!boss && boss.phase !== 'IDLE_GUARD' && boss.phase !== 'DEFEATED';
     this.updateRegion(landmark, isBossEngaged);
 
     // 5. Boss Fight HUD
     if (isBossEngaged) {
       const cfg = BOSS_CONFIGS[boss.id];
-      const fEval = evaluateTrig(boss.activeFunction, boss.theta);
-      const dEval = evaluateExactDerivative(boss.activeFunction, boss.theta);
-      const crit = isCriticalPoint(boss.activeFunction, boss.theta);
 
       this.bossHud.classList.remove('hidden');
       this.bossNameEl.textContent = `${cfg.name} · ${cfg.title}`;
@@ -1749,6 +1779,17 @@ export class GameUI {
       this.bossHpFill.style.width = `${Math.max(0, Math.min(100, (boss.hp / boss.maxHp) * 100))}%`;
       this.bossStaggerFill.style.width = `${Math.max(0, Math.min(100, (boss.stagger / boss.maxStagger) * 100))}%`;
 
+      if (recommended) {
+        const sigil = SIGIL_BY_ID[recommended];
+        const action = player.selectedSigil === recommended ? 'Ready to cast' : `Choose ${sigil.label}`;
+        const prompt = `<strong>${boss.activeFunction}(θ) → ${sigil.shortFormula}</strong><span> · ${action}</span>`;
+        if (this.equationRibbon.innerHTML !== prompt) this.equationRibbon.innerHTML = prompt;
+        return;
+      }
+
+      const fEval = evaluateTrig(boss.activeFunction, boss.theta);
+      const dEval = evaluateExactDerivative(boss.activeFunction, boss.theta);
+      const crit = isCriticalPoint(boss.activeFunction, boss.theta);
       const sign = dEval.value >= 0 ? '+' : '';
       this.equationRibbon.innerHTML = `
         <span class="eq-term">f(θ) = <strong>${boss.activeFunction}(θ)</strong></span>

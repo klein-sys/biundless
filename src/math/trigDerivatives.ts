@@ -38,6 +38,7 @@ export type StrikeOutcomeKind =
   | 'ward_shattered'
   | 'critical_stagger'
   | 'backlash'
+  | 'guided_mismatch'
   | 'resonance_hit'
   | 'basic_chip';
 
@@ -272,6 +273,8 @@ const OUTCOME_DESCRIPTIONS: Record<StrikeOutcomeKind, string> = {
     'Resonance Strike Connected: Attuned derivative aligns with the active wave slope f′(θ).',
   backlash:
     'Derivative Mismatch — Arcane Backlash: Chosen sigil disagrees with f′(θ); strike deflected to 0.25× and triggers shockwave.',
+  guided_mismatch:
+    'The chosen sigil dealt 0.25× damage. Use the derivative rule shown above to break the ward.',
   basic_chip:
     'Basic Blade Combo: Physical chip damage dealt without consuming a Resonance Sigil.',
 };

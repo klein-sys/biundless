@@ -5,6 +5,7 @@ import {
   createInitialPlayerState,
   removeStatModifiersBySource,
   resolveBasicAttack,
+  resolveBossResonanceCast,
   resolveResonanceStrike,
   stepPlayerState,
   tryStartDodge,
@@ -12,6 +13,26 @@ import {
 } from '../src/combat/resonanceCombat';
 
 describe('resonanceCombat seam', () => {
+  it('keeps a guided cast’s original sigil and rule through a phase change', () => {
+    const player = createInitialPlayerState();
+    player.selectedSigil = 'neg_sin';
+    const cast = { sigil: 'cos', guided: true, rule: { id: 'witch', activeFunction: 'sin', theta: 0.4 } } as const;
+    const boss = { id: 'witch', activeFunction: 'cos', theta: 1, wardActive: true } as const;
+    const hit = resolveBossResonanceCast(player, cast, boss, 20, false);
+    expect(hit.wardShattered).toBe(true);
+    expect(hit.workedExample).toMatchObject({ chosenSigil: 'cos', functionId: 'sin', thetaRadians: 0.4 });
+    expect(resolveBossResonanceCast(player, cast, { ...boss, wardActive: false }, 20, false).wardShattered).toBe(false);
+  });
+
+  it('uses the impact rule on other bosses and allows safe guided retries only', () => {
+    const player = createInitialPlayerState();
+    const cast = { sigil: 'cos', guided: true, rule: { id: 'witch', activeFunction: 'sin', theta: 0.4 } } as const;
+    const boss = { id: 'lich', activeFunction: 'tan', theta: 0.3, wardActive: true } as const;
+    const hit = resolveBossResonanceCast(player, cast, boss, 20, false);
+    expect(hit).toMatchObject({ multiplier: 0.25, wardShattered: false, triggerBacklash: false, outcomeKind: 'guided_mismatch' });
+    expect(hit.workedExample.functionId).toBe('tan');
+    expect(resolveBossResonanceCast(player, { ...cast, guided: false }, boss, 20, false).triggerBacklash).toBe(true);
+  });
   it('deals reliable basic chip damage even when a boss ward is active', () => {
     const player = createInitialPlayerState();
     const res = resolveBasicAttack(player, {

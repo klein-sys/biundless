@@ -97,7 +97,7 @@ export const DIALOGUE_NODES: Record<string, DialogueNode> = {
     speakerName: 'Archmage Aurelius',
     speakerTitle: 'Guardian of the Astrolabe & Guide Wizard',
     speakerRole: 'aurelius',
-    text: 'Every boss channels a fundamental trigonometric function: f(θ). Their wards shield against ordinary strikes, but a Resonance Strike matching the EXACT derivative f\'(θ) shatters their barrier! For example, when Vespera channels sin(θ), the rate of change is cos(θ). Striking at the critical slope (f\'(θ) = 0) delivers a catastrophic Critical Stagger!',
+    text: 'When Vespera channels sin(θ), its derivative is cos(θ). Open the sigil picker with Q or tap Sigil, choose Cosine, then cast at her to break the ward. Guided math marks the matching sigil as her spell changes.',
     choices: [
       {
         text: 'What about tangent and secant?',

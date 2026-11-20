@@ -8,6 +8,7 @@ import {
   type WorkedExampleSnapshot,
 } from '../math/trigDerivatives';
 import { BASE_MAX_HP } from '../rpg/progressionSystem';
+import type { BossRuntime } from '../bosses/bossAI';
 
 export type StatKey = 'maxHp' | 'maxStamina' | 'attack' | 'defense';
 
@@ -48,6 +49,34 @@ export interface BasicAttackContext {
 export interface ResonanceStrikeContext extends BasicAttackContext {
   readonly chosenSigil: DerivativeSigilId;
   readonly firstPersonAim: boolean;
+  readonly guidedMath?: boolean;
+}
+
+type BossRule = Pick<BossRuntime, 'id' | 'activeFunction' | 'theta'>;
+
+export interface ResonanceCast {
+  readonly sigil: DerivativeSigilId;
+  readonly guided: boolean;
+  readonly rule?: BossRule;
+}
+
+export function resolveBossResonanceCast(
+  player: PlayerState,
+  cast: ResonanceCast,
+  boss: BossRule & Pick<BossRuntime, 'wardActive'>,
+  bossDefense: number,
+  firstPersonAim: boolean,
+): StrikeResolution {
+  const rule = cast.guided && cast.rule?.id === boss.id ? cast.rule : boss;
+  return resolveResonanceStrike(player, {
+    activeFunction: rule.activeFunction,
+    theta: rule.theta,
+    wardActive: boss.wardActive,
+    bossDefense,
+    chosenSigil: cast.sigil,
+    firstPersonAim,
+    guidedMath: cast.guided,
+  });
 }
 
 export interface StrikeResolution {
@@ -256,8 +285,8 @@ export function resolveResonanceStrike(
   } else {
     multiplier = 0.25;
     staggerGain = 0;
-    triggerBacklash = true;
-    outcomeKind = 'backlash';
+    triggerBacklash = !ctx.guidedMath;
+    outcomeKind = triggerBacklash ? 'backlash' : 'guided_mismatch';
   }
 
   const raw = atk * multiplier * (DEFENSE_CONSTANT / (DEFENSE_CONSTANT + ctx.bossDefense));

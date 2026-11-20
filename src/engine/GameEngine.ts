@@ -24,7 +24,8 @@ import {
   computeEffectiveStat,
   createInitialPlayerState,
   resolveBasicAttack,
-  resolveResonanceStrike,
+  resolveBossResonanceCast,
+  type ResonanceCast,
   stepPlayerState,
   tryStartDodge,
   tryUseHealFlask,
@@ -35,6 +36,7 @@ import {
   buildWorkedExample,
   DERIVATIVE_SIGILS,
   evaluateExactDerivative,
+  expectedDerivativeFor,
   SIGIL_BY_ID,
   type WorkedExampleSnapshot,
 } from '../math/trigDerivatives';
@@ -96,13 +98,12 @@ import {
 import { DialogueRunner } from '../dialogue/dialogueRunner';
 import type { DialogueChoice } from '../dialogue/dialogueData';
 
-interface ActiveProjectile {
+type ActiveProjectile = {
   mesh: THREE.Mesh;
   velocity: THREE.Vector3;
   life: number;
   damage: number;
-  fromPlayer: boolean;
-}
+} & ({ fromPlayer: true; cast: ResonanceCast } | { fromPlayer: false });
 
 type ResonanceTarget =
   | { hitbox: THREE.Sphere; boss: BossRuntime }
@@ -1473,7 +1474,9 @@ export class GameEngine {
     this.scene.add(mesh);
 
     const targets = this.getResonanceTargets();
-    const lockedBoss = this.cameraCtrl.lockedOn ? targets.find((target) => 'boss' in target) : undefined;
+    const activeBoss = targets.find((target) => 'boss' in target);
+    const lockedBoss = this.cameraCtrl.lockedOn ? activeBoss : undefined;
+    const boss = activeBoss?.boss;
     const view = this.aimRaycaster;
     view.setFromCamera(SCREEN_CENTER, this.camera);
     view.far = RESONANCE_SPEED * RESONANCE_LIFETIME + view.ray.origin.distanceTo(mesh.position);
@@ -1491,6 +1494,13 @@ export class GameEngine {
       life: RESONANCE_LIFETIME,
       damage: 0,
       fromPlayer: true,
+      cast: {
+        sigil: sigilMeta.id,
+        guided: this.settings.guidedMath,
+        rule: this.settings.guidedMath && boss
+          ? { id: boss.id, activeFunction: boss.activeFunction, theta: boss.theta }
+          : undefined,
+      },
     });
     this.audio.playSlash(2);
   }
@@ -1512,16 +1522,9 @@ export class GameEngine {
     return targets;
   }
 
-  private resolvePlayerProjectileHit(boss: BossRuntime): void {
+  private resolvePlayerProjectileHit(boss: BossRuntime, cast: ResonanceCast): void {
     const cfg = BOSS_CONFIGS[boss.id];
-    const res = resolveResonanceStrike(this.player, {
-      activeFunction: boss.activeFunction,
-      theta: boss.theta,
-      wardActive: boss.wardActive,
-      bossDefense: cfg.defense,
-      chosenSigil: this.player.selectedSigil,
-      firstPersonAim: this.cameraCtrl.pov === 'first',
-    });
+    const res = resolveBossResonanceCast(this.player, cast, boss, cfg.defense, this.cameraCtrl.pov === 'first');
 
     this.lastWorkedExample = res.workedExample;
     applyDamageToBoss(boss, res.damage, res.staggerGain, res.wardShattered);
@@ -1532,9 +1535,13 @@ export class GameEngine {
       this.ui.showToast(`BOSS DEFEATED! +250 XP · ASTRAL LEVEL ${this.progression.level}`);
     }
     const hitOrigin = new THREE.Vector3(boss.x, boss.y + 1.8, boss.z);
-    const sigilHex = new THREE.Color(SIGIL_BY_ID[this.player.selectedSigil].accentHex).getHex();
+    const sigilHex = new THREE.Color(SIGIL_BY_ID[cast.sigil].accentHex).getHex();
 
-    if (res.triggerBacklash) {
+    if (res.outcomeKind === 'guided_mismatch') {
+      const rule = res.workedExample.functionId;
+      const needed = SIGIL_BY_ID[expectedDerivativeFor(rule)].label;
+      this.ui.showToast(`For ${rule}(θ), choose ${needed}`);
+    } else if (res.triggerBacklash) {
       this.audio.playBacklash();
       this.cameraCtrl.addTrauma(0.45);
       this.vfx.spawnBurst(hitOrigin, 0xc9323c, 16, 6.2, 0.45);
@@ -1560,18 +1567,18 @@ export class GameEngine {
     }
   }
 
-  private resolvePlayerProjectileHitMinion(minion: MinionRuntime): void {
+  private resolvePlayerProjectileHitMinion(minion: MinionRuntime, cast: ResonanceCast): void {
     const rawAtk = computeEffectiveStat(this.player, 'attack');
     const harmonicsMult = this.player.resonanceBonusMultiplier ?? 1.0;
     const res = applyDamageToMinion(
       minion,
       rawAtk,
-      this.player.selectedSigil,
+      cast.sigil,
       harmonicsMult,
       this.minionCallbacks
     );
     const hitOrigin = new THREE.Vector3(minion.x, minion.y + 1.2, minion.z);
-    const sigilHex = new THREE.Color(SIGIL_BY_ID[this.player.selectedSigil].accentHex).getHex();
+    const sigilHex = new THREE.Color(SIGIL_BY_ID[cast.sigil].accentHex).getHex();
 
     if (res.isResonant) {
       this.audio.playWardShatter(true);
@@ -1749,7 +1756,7 @@ export class GameEngine {
     });
   }
 
-  private stepResonanceProjectile(projectile: ActiveProjectile, dt: number): boolean {
+  private stepResonanceProjectile(projectile: Extract<ActiveProjectile, { fromPlayer: true }>, dt: number): boolean {
     const distance = RESONANCE_SPEED * dt;
     const ray = new THREE.Ray(projectile.mesh.position, projectile.velocity.clone().divideScalar(RESONANCE_SPEED));
     const end = ray.at(distance, new THREE.Vector3());
@@ -1764,8 +1771,8 @@ export class GameEngine {
     projectile.mesh.position.copy(ray.at(hit?.distance ?? travelDistance, end));
     if (!hit) return groundDepth > 0;
 
-    if ('boss' in hit.target) this.resolvePlayerProjectileHit(hit.target.boss);
-    else this.resolvePlayerProjectileHitMinion(hit.target.minion);
+    if ('boss' in hit.target) this.resolvePlayerProjectileHit(hit.target.boss, projectile.cast);
+    else this.resolvePlayerProjectileHitMinion(hit.target.minion, projectile.cast);
     return true;
   }
 

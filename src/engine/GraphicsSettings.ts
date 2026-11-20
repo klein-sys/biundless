@@ -20,6 +20,7 @@ export interface GameSettings {
   sensitivity: number;
   shakeStrength: number;
   audioEnabled: boolean;
+  guidedMath: boolean;
   audioVolume: number;
 }
 
@@ -77,6 +78,7 @@ export const DEFAULT_SETTINGS: GameSettings = {
   sensitivity: 1.0,
   shakeStrength: 1.0,
   audioEnabled: true,
+  guidedMath: true,
   audioVolume: 0.55,
 };
 
@@ -109,6 +111,7 @@ export function loadSettings(storage: StorageAdapter | null = defaultBrowserStor
       preset,
       fpsCap,
       showFps: typeof parsed.showFps === 'boolean' ? parsed.showFps : DEFAULT_SETTINGS.showFps,
+      guidedMath: typeof parsed.guidedMath === 'boolean' ? parsed.guidedMath : DEFAULT_SETTINGS.guidedMath,
       controlMode,
       sensitivity:
         typeof parsed.sensitivity === 'number' && parsed.sensitivity > 0.2 && parsed.sensitivity <= 3

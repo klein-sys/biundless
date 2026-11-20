@@ -44,7 +44,11 @@ describe('GraphicsSettings seam', () => {
       setItem: (k, v) => map.set(k, v),
     };
 
-    const custom = { ...DEFAULT_SETTINGS, preset: 'ultra' as const, fpsCap: 120 as const };
+    expect(loadSettings(storage).guidedMath).toBe(true);
+    map.set('ashen_tangent_settings_v1', '{"preset":"low"}');
+    expect(loadSettings(storage).guidedMath).toBe(true);
+
+    const custom = { ...DEFAULT_SETTINGS, preset: 'ultra' as const, fpsCap: 120 as const, guidedMath: false };
     saveSettings(custom, storage);
     expect(loadSettings(storage)).toEqual(custom);
 
