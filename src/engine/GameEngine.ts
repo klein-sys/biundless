@@ -482,7 +482,7 @@ export class GameEngine {
         this.cameraCtrl.resetSmoothing(this.playerPos, this.playerYaw);
         this.input.setUiBlocked(false);
         this.input.setPointerLockAllowed(true);
-        this.audio.unlock();
+        this.audio.setMusicActive(true);
         this.syncControlVisibility();
         this.ui.setPointerHintVisible(!this.isMobileUiActive() && !this.input.isPointerLocked());
       },
@@ -500,6 +500,7 @@ export class GameEngine {
         saveProgression(this.progression);
         this.started = false;
         this.paused = false;
+        this.audio.setMusicActive(false);
         this.input.setUiBlocked(true);
         this.input.setPointerLockAllowed(false);
         this.leaveBossEncounter();

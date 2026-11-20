@@ -1,7 +1,10 @@
+import soundtrackUrl from './the-valley-of-turning-stars.mp3?url';
+
 export class ProceduralAudio {
   private ctx: AudioContext | null = null;
   private masterGain: GainNode | null = null;
-  private droneGain: GainNode | null = null;
+  private music: HTMLAudioElement | null = null;
+  private musicActive = false;
   private enabled = true;
   private volume = 0.55;
 
@@ -16,41 +19,49 @@ export class ProceduralAudio {
       this.masterGain = this.ctx.createGain();
       this.masterGain.gain.value = this.volume;
       this.masterGain.connect(this.ctx.destination);
-      this.startAmbientBreezePad();
     }
     if (this.ctx.state === 'suspended') {
-      void this.ctx.resume();
+      void this.ctx.resume().catch(() => {});
+    }
+    if (this.musicActive) {
+      this.playMusic();
+    }
+  }
+
+  public setMusicActive(active: boolean): void {
+    this.musicActive = active;
+    if (active) {
+      this.unlock();
+    } else if (this.music) {
+      this.music.pause();
+      this.music.currentTime = 0;
     }
   }
 
   public setConfig(enabled: boolean, volume: number): void {
+    const wasEnabled = this.enabled;
     this.enabled = enabled;
     this.volume = Math.max(0, Math.min(1, volume));
     if (this.masterGain && this.ctx) {
       this.masterGain.gain.setTargetAtTime(this.enabled ? this.volume : 0, this.ctx.currentTime, 0.04);
     }
+    if (!enabled) {
+      this.music?.pause();
+    } else if (!wasEnabled && this.musicActive) {
+      this.unlock();
+    }
   }
 
-  private startAmbientBreezePad(): void {
+  private playMusic(): void {
     if (!this.ctx || !this.masterGain) return;
-    // Gentle sunlit Lydian open-fifth shimmer pad (C3 + G3 + D4)
-    const freqs = [130.81, 196.0, 293.66];
-    const filter = this.ctx.createBiquadFilter();
-    filter.type = 'lowpass';
-    filter.frequency.value = 420;
-
-    this.droneGain = this.ctx.createGain();
-    this.droneGain.gain.value = 0.032;
-
-    filter.connect(this.droneGain);
-    this.droneGain.connect(this.masterGain);
-
-    for (const f of freqs) {
-      const osc = this.ctx.createOscillator();
-      osc.type = 'sine';
-      osc.frequency.value = f;
-      osc.connect(filter);
-      osc.start();
+    if (!this.music) {
+      this.music = new Audio(soundtrackUrl);
+      this.music.loop = true;
+      this.ctx.createMediaElementSource(this.music).connect(this.masterGain);
+    }
+    if (this.music.paused) {
+      // Browsers can block playback until a user gesture. Unlock retries on input.
+      void this.music.play().catch(() => {});
     }
   }
 

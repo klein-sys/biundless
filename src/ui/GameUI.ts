@@ -801,7 +801,7 @@ export class GameUI {
             </div>
 
             <div class="setting-row inline-row">
-              <span class="setting-title">Procedural Audio</span>
+              <span class="setting-title">Game Audio</span>
               <button id="sidebar-opt-audio" class="pill-btn ${this.currentSettings.audioEnabled ? 'active' : ''}">
                 ${this.currentSettings.audioEnabled ? 'ON' : 'MUTED'}
               </button>
@@ -1296,7 +1296,7 @@ export class GameUI {
           </div>
 
           <div class="setting-row">
-            <span class="setting-title">Procedural Audio</span>
+            <span class="setting-title">Game Audio</span>
             <button id="opt-audio" class="pill-btn ${settings.audioEnabled ? 'active' : ''}">${settings.audioEnabled ? 'ON' : 'MUTED'}</button>
           </div>
 
