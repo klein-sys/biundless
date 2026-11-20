@@ -1,8 +1,42 @@
 import soundtrackUrl from './the-valley-of-turning-stars.mp3?url';
+import malakorBeamRelease from './sfx/malakor_beam_release.wav?url';
+import malakorBeamWindup from './sfx/malakor_beam_windup.wav?url';
+import vaelorathDiveImpact from './sfx/vaelorath_dive_impact.wav?url';
+import vaelorathDiveWarning from './sfx/vaelorath_dive_warning.wav?url';
+import vesperaOrbRelease from './sfx/vespera_orb_release.wav?url';
+import vesperaOrbWindup from './sfx/vespera_orb_windup.wav?url';
+import resonanceCast from './sfx/resonance_cast.wav?url';
+import swordHit from './sfx/sword_hit.wav?url';
+import swordSwingHeavy from './sfx/sword_swing_heavy.wav?url';
+import swordSwingLight from './sfx/sword_swing_light.wav?url';
+import swordSwingReverse from './sfx/sword_swing_reverse.wav?url';
+import wardShatterCritical from './sfx/ward_shatter_crit.wav?url';
+import wardShatterStandard from './sfx/ward_shatter_std.wav?url';
+
+const COMBAT_SOUNDS = {
+  malakor_beam_release: malakorBeamRelease,
+  malakor_beam_windup: malakorBeamWindup,
+  vaelorath_dive_impact: vaelorathDiveImpact,
+  vaelorath_dive_warning: vaelorathDiveWarning,
+  vespera_orb_release: vesperaOrbRelease,
+  vespera_orb_windup: vesperaOrbWindup,
+  resonance_cast: resonanceCast,
+  sword_hit: swordHit,
+  sword_swing_heavy: swordSwingHeavy,
+  sword_swing_light: swordSwingLight,
+  sword_swing_reverse: swordSwingReverse,
+  ward_shatter_crit: wardShatterCritical,
+  ward_shatter_std: wardShatterStandard,
+};
+
+type CombatSound = keyof typeof COMBAT_SOUNDS;
+const SWORD_SWINGS = ['sword_swing_light', 'sword_swing_reverse', 'sword_swing_heavy'] as const;
 
 export class ProceduralAudio {
   private ctx: AudioContext | null = null;
   private masterGain: GainNode | null = null;
+  private combatGain: GainNode | null = null;
+  private readonly combatBuffers = new Map<CombatSound, AudioBuffer>();
   private music: HTMLAudioElement | null = null;
   private musicActive = false;
   private enabled = true;
@@ -19,6 +53,12 @@ export class ProceduralAudio {
       this.masterGain = this.ctx.createGain();
       this.masterGain.gain.value = this.volume;
       this.masterGain.connect(this.ctx.destination);
+      this.combatGain = this.ctx.createGain();
+      this.combatGain.gain.value = 0.45;
+      this.combatGain.connect(this.masterGain);
+      for (const cue of Object.keys(COMBAT_SOUNDS) as CombatSound[]) {
+        void this.loadCombatSound(this.ctx, cue);
+      }
     }
     if (this.ctx.state === 'suspended') {
       void this.ctx.resume().catch(() => {});
@@ -65,7 +105,31 @@ export class ProceduralAudio {
     }
   }
 
-  public playSlash(comboStep = 0): void {
+  private async loadCombatSound(ctx: AudioContext, cue: CombatSound): Promise<void> {
+    try {
+      const response = await fetch(COMBAT_SOUNDS[cue]);
+      if (!response.ok) return;
+      const buffer = await ctx.decodeAudioData(await response.arrayBuffer());
+      this.combatBuffers.set(cue, buffer);
+    } catch {
+      // Other cues and synthesized effects remain available if a clip fails to load.
+    }
+  }
+
+  public playCombatSound(cue: CombatSound): boolean {
+    if (!this.enabled || this.ctx?.state !== 'running' || !this.combatGain) return false;
+    const buffer = this.combatBuffers.get(cue);
+    if (!buffer) return false;
+    const source = this.ctx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(this.combatGain);
+    source.start();
+    return true;
+  }
+
+  public playSlash(comboStep = 1): void {
+    const cue = SWORD_SWINGS[(Math.max(1, comboStep) - 1) % SWORD_SWINGS.length];
+    if (this.playCombatSound(cue)) return;
     if (!this.enabled || !this.ctx || !this.masterGain) return;
     const now = this.ctx.currentTime;
     const osc = this.ctx.createOscillator();
@@ -101,6 +165,12 @@ export class ProceduralAudio {
   }
 
   public playWardShatter(isCritical: boolean): void {
+    if (!this.playCombatSound(isCritical ? 'ward_shatter_crit' : 'ward_shatter_std')) {
+      this.playChime(isCritical);
+    }
+  }
+
+  public playChime(isCritical = false): void {
     if (!this.enabled || !this.ctx || !this.masterGain) return;
     const now = this.ctx.currentTime;
     const freqs = isCritical ? [523.25, 659.25, 783.99, 1046.5] : [440, 587.33, 880];

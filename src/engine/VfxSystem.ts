@@ -283,12 +283,7 @@ export class VfxSystem {
     }
   }
 
-  public clear(): void {
-    for (const s of this.slashes) {
-      this.scene.remove(s.mesh);
-      s.material.dispose();
-    }
-    this.slashes.length = 0;
+  public clearGroundTelegraphs(): void {
     for (const t of this.telegraphs) {
       this.scene.remove(t.group);
       t.outerRing.geometry.dispose();
@@ -297,6 +292,15 @@ export class VfxSystem {
       (t.innerDisc.material as THREE.Material).dispose();
     }
     this.telegraphs.length = 0;
+  }
+
+  public clear(): void {
+    for (const s of this.slashes) {
+      this.scene.remove(s.mesh);
+      s.material.dispose();
+    }
+    this.slashes.length = 0;
+    this.clearGroundTelegraphs();
     for (const p of this.sparkPool) {
       p.active = false;
       p.sprite.visible = false;

@@ -795,6 +795,7 @@ export class GameEngine {
       }
     }
     this.activeBossId = null;
+    this.vfx.clearGroundTelegraphs();
     for (const projectile of this.projectiles) {
       if (!projectile.fromPlayer) projectile.life = 0;
     }
@@ -1358,7 +1359,7 @@ export class GameEngine {
         this.freezeTheta,
         getTerrainHeight,
       );
-      if (this.activeBossId === id) {
+      if (this.activeBossId === id && events.length > 0) {
         this.handleBossEvents(events, boss);
       }
 
@@ -1510,6 +1511,7 @@ export class GameEngine {
     this.vfx.spawnSlashArc(this.playerPos, slashYaw, this.player.comboStep, sigilHex);
 
     // Check minion melee strikes in the open world
+    let hitMinion = false;
     for (const minion of this.minions) {
       if (minion.state === 'DEFEATED') continue;
       const d = Math.hypot(minion.x - this.playerPos.x, minion.z - this.playerPos.z);
@@ -1522,6 +1524,7 @@ export class GameEngine {
           1.0,
           this.minionCallbacks
         );
+        hitMinion = true;
         this.cameraCtrl.addTrauma(0.18);
         this.vfx.spawnBurst(
           new THREE.Vector3(minion.x, minion.y + 1.0, minion.z),
@@ -1533,6 +1536,7 @@ export class GameEngine {
         this.ui.showToast(`STRIKE: ${res.damage}`);
       }
     }
+    if (hitMinion) this.audio.playCombatSound('sword_hit');
 
     const activeBoss = this.getActiveBoss();
     if (!activeBoss || activeBoss.phase === 'DEFEATED' || activeBoss.phase === 'IDLE_GUARD') return;
@@ -1548,6 +1552,7 @@ export class GameEngine {
     });
     this.lastWorkedExample = res.workedExample;
     applyDamageToBoss(activeBoss, res.damage, res.staggerGain, false);
+    if (!hitMinion) this.audio.playCombatSound('sword_hit');
     this.vfx.spawnBurst(
       new THREE.Vector3(activeBoss.x, activeBoss.y + 1.6, activeBoss.z),
       0xf5d48a,
@@ -1607,7 +1612,7 @@ export class GameEngine {
           : undefined,
       },
     });
-    this.audio.playSlash(2);
+    this.audio.playCombatSound('resonance_cast');
   }
 
   private getResonanceTargets(): ResonanceTarget[] {
@@ -1660,7 +1665,7 @@ export class GameEngine {
       this.vfx.spawnBurst(hitOrigin, sigilHex, 24, 7.6, 0.52);
       this.ui.showToast(`WARD SHATTERED! ${res.multiplier}× (${res.damage})`);
     } else {
-      this.audio.playWardShatter(false);
+      this.audio.playChime();
       this.cameraCtrl.addTrauma(0.42);
       this.vfx.spawnBurst(hitOrigin, sigilHex, 15, 6.0, 0.44);
       this.ui.showToast(`RESONANCE HIT! ${res.multiplier}× (${res.damage})`);
@@ -1678,7 +1683,7 @@ export class GameEngine {
     this.syncBossRelicModels();
 
     this.vfx.spawnBurst(new THREE.Vector3(boss.x, boss.y + 1.8, boss.z), 0xffe49c, 32, 9.0, 0.65);
-    this.audio.playWardShatter(true);
+    this.audio.playChime(true);
     this.ui.showToast(`Victory · +250 XP · Inspect ${BOSS_RELIC_NAMES[boss.id]}`, 6000);
   }
 
@@ -1724,23 +1729,28 @@ export class GameEngine {
 
   private handleBossEvents(events: ReturnType<typeof stepBossAI>, boss: BossRuntime): void {
     const cfg = BOSS_CONFIGS[boss.id];
+    const canRelease = () => this.activeBossId === boss.id
+      && boss.phase !== 'STAGGERED' && boss.phase !== 'DEFEATED';
     for (const ev of events) {
       if (ev.kind === 'projectile_orb') {
-        // Telegraphed 0.8s ground runic circle under player for magic volleys
-        this.vfx.spawnGroundTelegraph(this.playerPos.x, this.playerPos.z, 2.2, 0.8, cfg.accentColor);
-
-        const orb = new THREE.Mesh(
-          new THREE.SphereGeometry(0.38, 10, 8),
-          new THREE.MeshBasicMaterial({ color: cfg.accentColor }),
-        );
-        orb.position.set(ev.originX, boss.y + 1.2, ev.originZ);
-        this.scene.add(orb);
-        this.projectiles.push({
-          mesh: orb,
-          velocity: new THREE.Vector3(ev.dirX * ev.speed, 0, ev.dirZ * ev.speed),
-          life: 3.2,
-          damage: ev.damage,
-          fromPlayer: false,
+        const { x, z } = this.playerPos;
+        this.audio.playCombatSound('vespera_orb_windup');
+        this.vfx.spawnGroundTelegraph(x, z, 2.2, 0.6, cfg.accentColor, () => {
+          if (!canRelease()) return;
+          this.audio.playCombatSound('vespera_orb_release');
+          const orb = new THREE.Mesh(
+            new THREE.SphereGeometry(0.38, 10, 8),
+            new THREE.MeshBasicMaterial({ color: cfg.accentColor }),
+          );
+          orb.position.set(boss.x, boss.y + 1.2, boss.z);
+          this.scene.add(orb);
+          this.projectiles.push({
+            mesh: orb,
+            velocity: new THREE.Vector3(x - boss.x, 0, z - boss.z).normalize().multiplyScalar(ev.speed),
+            life: 3.2,
+            damage: ev.damage,
+            fromPlayer: false,
+          });
         });
       } else if (ev.kind === 'wave_pulse') {
         // 0.8s telegraphed expanding runic warning before shockwave detonation
@@ -1748,28 +1758,32 @@ export class GameEngine {
           this.spawnShockwave(ev.originX, ev.originZ, ev.radius, ev.damage, cfg.accentColor);
         });
       } else if (ev.kind === 'beam_sweep') {
-        const dirX = Math.sin(ev.angle);
-        const dirZ = Math.cos(ev.angle);
-        // Telegraph upcoming laser furrow
-        this.vfx.spawnGroundTelegraph(boss.x + dirX * 6, boss.z + dirZ * 6, 1.8, 0.65, cfg.accentColor);
-
-        const bolt = new THREE.Mesh(
-          new THREE.BoxGeometry(0.35, 0.35, 1.8),
-          new THREE.MeshBasicMaterial({ color: cfg.accentColor }),
-        );
-        bolt.position.set(boss.x, boss.y + 1.2, boss.z);
-        bolt.lookAt(boss.x + dirX, boss.y + 1.2, boss.z + dirZ);
-        this.scene.add(bolt);
-        this.projectiles.push({
-          mesh: bolt,
-          velocity: new THREE.Vector3(dirX * 16, 0, dirZ * 16),
-          life: 2.2,
-          damage: ev.damage,
-          fromPlayer: false,
+        const x = boss.x + Math.sin(ev.angle) * 6;
+        const z = boss.z + Math.cos(ev.angle) * 6;
+        this.audio.playCombatSound('malakor_beam_windup');
+        this.vfx.spawnGroundTelegraph(x, z, 1.8, 0.65, cfg.accentColor, () => {
+          if (!canRelease()) return;
+          this.audio.playCombatSound('malakor_beam_release');
+          const bolt = new THREE.Mesh(
+            new THREE.BoxGeometry(0.35, 0.35, 1.8),
+            new THREE.MeshBasicMaterial({ color: cfg.accentColor }),
+          );
+          bolt.position.set(boss.x, boss.y + 1.2, boss.z);
+          bolt.lookAt(x, bolt.position.y, z);
+          this.scene.add(bolt);
+          this.projectiles.push({
+            mesh: bolt,
+            velocity: new THREE.Vector3(x - boss.x, 0, z - boss.z).normalize().multiplyScalar(16),
+            life: 2.2,
+            damage: ev.damage,
+            fromPlayer: false,
+          });
         });
       } else if (ev.kind === 'dive_slam') {
-        // 0.85s telegraphed impact circle before dive shockwave
+        this.audio.playCombatSound('vaelorath_dive_warning');
         this.vfx.spawnGroundTelegraph(ev.targetX, ev.targetZ, ev.radius, 0.85, cfg.accentColor, () => {
+          if (!canRelease()) return;
+          this.audio.playCombatSound('vaelorath_dive_impact');
           this.spawnShockwave(ev.targetX, ev.targetZ, ev.radius, ev.damage, cfg.accentColor);
         });
       }
@@ -1820,7 +1834,7 @@ export class GameEngine {
       node.modelBundle.setHarvested(true);
       addInventoryItem(this.progression, node.def.type, 1);
       saveProgression(this.progression);
-      this.audio.playWardShatter(false);
+      this.audio.playChime();
       this.vfx.spawnBurst(
         new THREE.Vector3(node.def.x, getTerrainHeight(node.def.x, node.def.z) + 0.8, node.def.z),
         0x38bdf8,
