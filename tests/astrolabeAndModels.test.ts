@@ -29,32 +29,28 @@ describe('Astrolabe Grimoire SVG Plotter', () => {
 
     expect(plot.pathData).toBeTruthy();
     expect(plot.pathData.startsWith('M')).toBe(true);
-    expect(plot.tangentLine).toBeDefined();
-    expect(Number.isFinite(plot.tangentLine.x1)).toBe(true);
-    expect(Number.isFinite(plot.tangentLine.y1)).toBe(true);
-    expect(Number.isFinite(plot.tangentLine.x2)).toBe(true);
-    expect(Number.isFinite(plot.tangentLine.y2)).toBe(true);
+    expect(Number.isFinite(plot.tangentLine?.x1)).toBe(true);
+    expect(Number.isFinite(plot.tangentLine?.y1)).toBe(true);
+    expect(Number.isFinite(plot.tangentLine?.x2)).toBe(true);
+    expect(Number.isFinite(plot.tangentLine?.y2)).toBe(true);
 
     // Verify contact point is mapped within SVG bounds
-    expect(plot.contactPoint.x).toBeGreaterThanOrEqual(0);
-    expect(plot.contactPoint.x).toBeLessThanOrEqual(360);
-    expect(plot.contactPoint.y).toBeGreaterThanOrEqual(0);
-    expect(plot.contactPoint.y).toBeLessThanOrEqual(180);
+    expect(plot.contactPoint?.x).toBeGreaterThanOrEqual(0);
+    expect(plot.contactPoint?.x).toBeLessThanOrEqual(360);
+    expect(plot.contactPoint?.y).toBeGreaterThanOrEqual(0);
+    expect(plot.contactPoint?.y).toBeLessThanOrEqual(180);
 
     // Verify axis ticks are present
     expect(plot.ticks.length).toBeGreaterThan(0);
   });
 
-  it('handles near-asymptote angles safely without NaN or infinite paths', () => {
-    // tan has an asymptote at pi/2
-    const thetaNearAsymptote = Math.PI * 0.5 - 0.001;
-    const plot = generateWavePlotData('tan', thetaNearAsymptote, 360, 180);
+  it.each([Math.PI / 2, Math.PI / 2 - 0.001])('breaks the curve at its poles and omits a tangent outside the chart', (theta) => {
+    const plot = generateWavePlotData('tan', theta, 360, 180);
 
-    expect(plot.pathData).not.toContain('NaN');
-    expect(Number.isFinite(plot.contactPoint.x)).toBe(true);
-    expect(Number.isFinite(plot.contactPoint.y)).toBe(true);
-    expect(Number.isFinite(plot.tangentLine.x1)).toBe(true);
-    expect(Number.isFinite(plot.tangentLine.y1)).toBe(true);
+    expect(plot.pathData).not.toMatch(/NaN|Infinity/);
+    expect(plot.pathData.match(/M/g)).toHaveLength(3);
+    expect(plot.contactPoint).toBeNull();
+    expect(plot.tangentLine).toBeNull();
   });
 });
 

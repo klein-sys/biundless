@@ -4,7 +4,6 @@ import { ActionBuffer, applyRadialDeadzone, type GameAction } from './inputMath'
 export interface InputCallbacks {
   onSelectSigil: (sigil: DerivativeSigilId) => void;
   onToggleSigils: () => void;
-  onEquipMatch: () => void;
   onToggleDev: () => void;
   onTogglePause: () => void;
   onToggleMap?: () => void;
@@ -189,12 +188,9 @@ export class InputManager {
         } else if (e.code === 'Tab') {
           e.preventDefault();
           this.buffer.press('lockOn', this.nowSec());
-        } else if (e.code === 'KeyG') {
-          this.callbacks.onEquipMatch();
         } else if (e.code.startsWith('Digit')) {
           const idx = Number(e.code.replace('Digit', '')) - 1;
           if (idx >= 0 && idx < DERIVATIVE_SIGILS.length) {
-            this.sigilIndex = idx;
             this.callbacks.onSelectSigil(DERIVATIVE_SIGILS[idx].id);
           }
         }
@@ -265,8 +261,8 @@ export class InputManager {
       (e) => {
         if (this.uiBlocked) return;
         const dir = e.deltaY > 0 ? 1 : -1;
-        this.sigilIndex = (this.sigilIndex + dir + DERIVATIVE_SIGILS.length) % DERIVATIVE_SIGILS.length;
-        this.callbacks.onSelectSigil(DERIVATIVE_SIGILS[this.sigilIndex].id);
+        const next = (this.sigilIndex + dir + DERIVATIVE_SIGILS.length) % DERIVATIVE_SIGILS.length;
+        this.callbacks.onSelectSigil(DERIVATIVE_SIGILS[next].id);
       },
       { passive: true },
     );

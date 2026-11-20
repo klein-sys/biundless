@@ -19,6 +19,7 @@ import {
   expectedDerivativeFor,
   formatThetaPi,
   generateWavePlotData,
+  getDerivativeSolution,
   isCriticalPoint,
   SIGIL_BY_ID,
   SIGIL_NAMES,
@@ -57,7 +58,6 @@ export interface UIHandlers {
   onToggleLockOn: () => void;
   onOpenSigilPicker: () => void;
   onCloseSigilPicker: () => void;
-  onEquipMatch?: () => void;
   onTouchAction: (action: GameAction) => void;
   onTouchStick: (nx: number, ny: number) => void;
   onUpdateSettings: (next: GameSettings) => void;
@@ -135,7 +135,7 @@ export class GameUI {
   private guidedSigil!: HTMLElement;
   private guidedBossSpell!: HTMLElement;
   private guidedFormula!: HTMLElement;
-  private equipMatchButton!: HTMLButtonElement;
+  private guidedEquipped!: HTMLElement;
 
   private cutsceneOverlay!: HTMLElement;
   private cutsceneBossName!: HTMLElement;
@@ -263,9 +263,9 @@ export class GameUI {
           <div id="boss-stagger-fill" class="boss-stagger-fill" style="width:0%"></div>
         </div>
         <div id="equation-ribbon" class="equation-ribbon"></div>
-        <div id="guided-sigil" class="guided-sigil interactive hidden">
+        <div id="guided-sigil" class="guided-sigil hidden">
           <span id="guided-boss-spell"></span>
-          <button id="equip-match" class="adv-btn primary" title="Equip matching sigil (G)"></button>
+          <strong id="guided-equipped" aria-live="polite"></strong>
           <small id="guided-formula"></small>
         </div>
       </div>
@@ -375,7 +375,7 @@ export class GameUI {
           <header class="sigil-picker-heading">
             <div>
               <h2 id="sigil-picker-title">Choose a sigil</h2>
-              <p>Combat is paused. Choose a sigil, then cast when you’re ready.</p>
+              <p id="sigil-picker-help">Combat is paused. Choose a sigil, then cast when you’re ready.</p>
             </div>
             <button id="sigil-picker-close" class="adv-btn">Close</button>
           </header>
@@ -458,8 +458,7 @@ export class GameUI {
     this.guidedSigil = this.root.querySelector('#guided-sigil')!;
     this.guidedBossSpell = this.root.querySelector('#guided-boss-spell')!;
     this.guidedFormula = this.root.querySelector('#guided-formula')!;
-    this.equipMatchButton = this.root.querySelector('#equip-match')!;
-    this.equipMatchButton.addEventListener('click', () => this.handlers.onEquipMatch?.());
+    this.guidedEquipped = this.root.querySelector('#guided-equipped')!;
 
     this.hudTopLeft = this.root.querySelector('.hud-top-left')!;
     this.hudTopRight = this.root.querySelector('.hud-top-right')!;
@@ -544,7 +543,7 @@ export class GameUI {
     });
     this.sigilPicker.addEventListener('keydown', (event) => {
       if (event.key !== 'Tab') return;
-      const buttons = this.sigilPicker.querySelectorAll<HTMLButtonElement>('button');
+      const buttons = Array.from(this.sigilPicker.querySelectorAll<HTMLButtonElement>('button')).filter((button) => !button.disabled);
       const edge = event.shiftKey ? buttons[0] : buttons[buttons.length - 1];
       if (document.activeElement !== edge) return;
       event.preventDefault();
@@ -610,6 +609,12 @@ export class GameUI {
     if (this.isBossRelicOpen()) {
       this.relicModal.removeAttribute('inert');
       this.relicModal.querySelector<HTMLButtonElement>('#relic-math')?.focus();
+    } else if (!this.titleOverlay.classList.contains('hidden')) {
+      this.titleOverlay.removeAttribute('inert');
+      this.titleOverlay.querySelector<HTMLButtonElement>('#sidebar-btn-worked')?.focus();
+    } else if (!this.settingsModal.classList.contains('hidden')) {
+      this.settingsModal.removeAttribute('inert');
+      this.settingsModal.querySelector<HTMLButtonElement>('#dev-worked')?.focus();
     }
   }
 
@@ -637,8 +642,8 @@ export class GameUI {
             and trigger devastating Critical Staggers.
           </p>
           <div class="controls-cheat">
-            <div><strong>Desktop:</strong> WASD Move · Shift Sprint · Space Jump · Ctrl/C Dash · LMB Strike · RMB/E Cast Sigil · 1–6 Select · Q Sigils · G Equip Match · F Interact · M Atlas · V POV · Esc Menu</div>
-            <div><strong>Mobile:</strong> Left Stick to move · Right Drag to look · Tap Sigils, Equip, and Cast</div>
+            <div><strong>Desktop:</strong> WASD Move · Shift Sprint · Space Jump · Ctrl/C Dash · LMB Strike · RMB/E Cast Sigil · 1–6 Select · Q Sigils · F Interact · M Atlas · V POV · Esc Menu</div>
+            <div><strong>Mobile:</strong> Left Stick to move · Right Drag to look · Tap Sigils or Cast</div>
           </div>
           <div class="title-actions">
             ${
@@ -797,7 +802,7 @@ export class GameUI {
 
             <div class="setting-row inline-row">
               <span class="setting-title">Guided math</span>
-              <button id="sidebar-guided-math" class="pill-btn ${this.currentSettings.guidedMath ? 'active' : ''}" aria-label="Guided math" aria-pressed="${this.currentSettings.guidedMath}">${this.currentSettings.guidedMath ? 'ON' : 'OFF'}</button>
+              <button id="sidebar-guided-math" class="pill-btn ${this.currentSettings.guidedMath ? 'active' : ''}" aria-label="Guided math" title="Automatically equips matching boss sigils" aria-pressed="${this.currentSettings.guidedMath}">${this.currentSettings.guidedMath ? 'ON' : 'OFF'}</button>
             </div>
 
             <div class="setting-row inline-row">
@@ -1292,7 +1297,7 @@ export class GameUI {
 
           <div class="setting-row">
             <span class="setting-title">Guided math</span>
-            <button id="opt-guided-math" class="pill-btn ${settings.guidedMath ? 'active' : ''}" aria-label="Guided math" aria-pressed="${settings.guidedMath}">${settings.guidedMath ? 'ON' : 'OFF'}</button>
+            <button id="opt-guided-math" class="pill-btn ${settings.guidedMath ? 'active' : ''}" aria-label="Guided math" title="Automatically equips matching boss sigils" aria-pressed="${settings.guidedMath}">${settings.guidedMath ? 'ON' : 'OFF'}</button>
           </div>
 
           <div class="setting-row">
@@ -1599,8 +1604,6 @@ export class GameUI {
     });
 
     this.settingsModal.querySelector('#dev-worked')?.addEventListener('click', () => {
-      this.closeSettingsModal();
-      this.handlers.onCloseSettings();
       this.handlers.onOpenWorkedExample();
     });
     this.settingsModal.querySelector('#dev-god')?.addEventListener('click', () => this.handlers.onToggleGodMode());
@@ -1682,7 +1685,6 @@ export class GameUI {
     done.addEventListener('click', () => this.closeBossRelic());
     done.focus();
     this.relicModal.querySelector('#relic-math')!.addEventListener('click', () => {
-      this.relicModal.setAttribute('inert', '');
       this.showWorkedExample(example, !evidence);
     });
     this.relicModal.querySelector('#relic-rematch')?.addEventListener('click', () => {
@@ -1692,114 +1694,118 @@ export class GameUI {
   }
 
   public showWorkedExample(snapshot: WorkedExampleSnapshot, practice = false): void {
+    const fromRelic = this.isBossRelicOpen();
+    const fromTitle = !this.titleOverlay.classList.contains('hidden');
+    const fromMenu = !this.settingsModal.classList.contains('hidden');
+    const closeLabel = fromRelic ? 'Back to Relic' : fromTitle ? 'Return to Sanctuary Settings'
+      : fromMenu ? 'Back to Sanctuary Menu' : 'Resume Combat';
+
+    const fn = snapshot.functionId ?? 'sin';
+    const theta = snapshot.thetaRadians ?? Math.PI / 3;
+    const solution = getDerivativeSolution(fn, theta);
+    const plot = generateWavePlotData(fn, theta);
+    const { slope } = solution;
+    const slopeText = slope === null ? 'undefined'
+      : (Math.abs(slope) >= 100_000 ? slope.toExponential(3) : (Math.abs(slope) < 0.0005 ? 0 : slope).toFixed(3))
+        .replace('-', '−');
+    const slopeMeaning = slope === null ? 'The wave and its slope are undefined at this angle.'
+      : snapshot.isCriticalPoint ? 'The slope is close to zero, a critical strike window.'
+      : slope > 0 ? 'The wave is rising here.' : 'The wave is falling here.';
+    const sigil = SIGIL_NAMES[expectedDerivativeFor(fn)];
+
+    if (fromRelic) this.relicModal.setAttribute('inert', '');
+    else if (fromTitle) this.titleOverlay.setAttribute('inert', '');
+    else if (fromMenu) this.settingsModal.setAttribute('inert', '');
     this.workedModal.classList.remove('hidden');
-    const closeLabel = this.isBossRelicOpen() ? 'Back to Relic' : !this.titleOverlay.classList.contains('hidden')
-      ? 'Return to Sanctuary Settings'
-      : 'Resume Combat';
-
-    const fnId = snapshot.functionId || 'sin';
-    const theta = typeof snapshot.thetaRadians === 'number' ? snapshot.thetaRadians : Math.PI / 3;
-    const plot = generateWavePlotData(fnId, theta);
-    const slopeSign = (snapshot.evaluatedSlope ?? 0.5) >= 0 ? '+' : '';
-
     this.workedModal.innerHTML = `
-      <div class="adventure-modal astrolabe-grimoire">
-        <!-- Celestial Filigree Corners -->
-        <div class="filigree-corner top-left">✧</div>
-        <div class="filigree-corner top-right">✧</div>
-        <div class="filigree-corner bottom-left">✧</div>
-        <div class="filigree-corner bottom-right">✧</div>
+      <div class="adventure-modal astrolabe-grimoire" role="dialog" aria-modal="true" aria-labelledby="worked-title">
+        <header class="grimoire-header">
+          <h2 id="worked-title">Derivative Solution</h2>
+          <p>${practice ? 'Practice example' : fromRelic ? 'From your victory' : 'From your latest strike'} · ${TRIG_NAMES[fn]} wave</p>
+        </header>
 
-        <div class="grimoire-header">
-          <div class="title-crest">✧ CELESTIAL ASTROLABE ✧</div>
-          <h2 class="worked-title">THEOREM OF INSTANTANEOUS RESONANCE</h2>
-          <p class="worked-sub">${practice ? 'Practice example' : 'Wave and slope calculation'}</p>
-        </div>
+        <div class="solution-layout">
+          <ol class="solution-steps">
+            <li>
+              <h3>Identify the wave</h3>
+              <p class="solution-formula">${snapshot.functionFormula}</p>
+              <p>The angle at this point is θ₀ ≈ ${solution.angle} rad.</p>
+            </li>
+            <li>
+              <h3>Apply the derivative rule</h3>
+              <p class="solution-formula">${snapshot.derivativeRule.replaceAll('-', '−').replace('·', ' · ')}</p>
+              <p>The derivative gives the wave’s tangent slope at any angle where it is defined.</p>
+            </li>
+            <li>
+              <h3>Substitute the angle</h3>
+              <p class="solution-formula">${slope === null
+                ? `${solution.denominator}(θ₀) = 0, so f′(θ₀) is undefined`
+                : `f′(θ₀) ≈ ${solution.substitution}${solution.calculatorSubstitution
+                  ? `<br/>= ${solution.calculatorSubstitution}` : ''} ≈ <strong>${slopeText}</strong>`}</p>
+              <p>${slopeMeaning}</p>
+            </li>
+            <li>
+              <h3>Match the sigil</h3>
+              <p>Equip <strong>${sigil}</strong> because its formula matches the derivative. Guided Math equips it while the boss uses this wave.</p>
+            </li>
+          </ol>
 
-        <!-- Live Interactive SVG Calculus Graph -->
-        <div class="astrolabe-plot-box">
-          <div class="plot-meta-row">
-            <span class="plot-func-tag">Active Wave: <strong>${snapshot.functionFormula}</strong></span>
-            <span class="plot-slope-badge">Tangent Slope f′(θ) = <strong>${slopeSign}${snapshot.evaluatedSlope.toFixed(3)}</strong></span>
+          <div class="solution-context">
+            <figure class="solution-plot">
+              <h3>Wave and tangent</h3>
+              <svg class="astrolabe-svg-graph" viewBox="0 0 ${plot.width} ${plot.height}" role="img"
+                aria-label="${TRIG_NAMES[fn]} wave. Tangent slope at the selected angle is ${slopeText}.">
+                <defs>
+                  <clipPath id="solution-chart-clip">
+                    <rect x="24" y="4" width="${plot.width - 48}" height="${plot.height - 24}"/>
+                  </clipPath>
+                </defs>
+                ${[-1, 0, 1].map((value) => {
+                  const y = plot.axisY - value * plot.yScale;
+                  return `<line class="solution-gridline" x1="24" y1="${y}" x2="${plot.width - 24}" y2="${y}"/>
+                    <text x="15" y="${y + 4}" text-anchor="end">${value}</text>`;
+                }).join('')}
+                ${plot.ticks.map((tick) => `
+                  <line class="solution-gridline" x1="${tick.x}" y1="4" x2="${tick.x}" y2="${plot.height - 20}"/>
+                  <text x="${tick.x}" y="${plot.height - 5}" text-anchor="middle">${tick.label}</text>
+                `).join('')}
+                <g clip-path="url(#solution-chart-clip)">
+                  <path class="solution-wave" d="${plot.pathData}"/>
+                  ${plot.tangentLine && plot.contactPoint ? `
+                    <line class="solution-tangent" x1="${plot.tangentLine.x1}" y1="${plot.tangentLine.y1}"
+                      x2="${plot.tangentLine.x2}" y2="${plot.tangentLine.y2}"/>
+                    <circle class="solution-contact" cx="${plot.contactPoint.x}" cy="${plot.contactPoint.y}" r="4"/>
+                  ` : ''}
+                </g>
+              </svg>
+              <figcaption>${plot.contactPoint ? 'The dashed tangent touches the wave at θ₀.'
+                : slope === null ? 'There is no tangent at the asymptote.' : 'The point at θ₀ lies beyond this graph’s vertical range.'}</figcaption>
+            </figure>
+
+            ${practice ? '' : `
+              <section class="solution-outcome">
+                <h3>Combat result</h3>
+                <div class="solution-outcome-summary">
+                  <strong>${snapshot.outcomeKind === 'basic_chip' ? 'Sword strike'
+                    : `${snapshot.chosenSigilLabel} · ${snapshot.isExactMatch ? 'Matched' : 'Mismatched'}`}</strong>
+                  <span>${snapshot.damageMultiplier.toFixed(2)}× damage</span>
+                </div>
+                <p>${snapshot.outcomeSummary}</p>
+              </section>
+            `}
           </div>
-
-          <svg class="astrolabe-svg-graph" viewBox="0 0 ${plot.width} ${plot.height}">
-            <defs>
-              <linearGradient id="waveGlowGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-                <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.7"/>
-                <stop offset="50%" stop-color="#ffd978" stop-opacity="1"/>
-                <stop offset="100%" stop-color="#f59e0b" stop-opacity="0.8"/>
-              </linearGradient>
-            </defs>
-
-            <!-- Coordinate Axes -->
-            <line x1="20" y1="${plot.axisY}" x2="${plot.width - 20}" y2="${plot.axisY}" stroke="rgba(213, 184, 104, 0.4)" stroke-width="1.2" stroke-dasharray="3 3"/>
-            
-            <!-- Axis Ticks & Radian Labels -->
-            ${plot.ticks
-              .map(
-                (t) => `
-              <line x1="${t.x}" y1="${plot.axisY - 4}" x2="${t.x}" y2="${plot.axisY + 4}" stroke="rgba(213, 184, 104, 0.6)" stroke-width="1.2"/>
-              <text x="${t.x}" y="${plot.height - 4}" text-anchor="middle" font-size="9" fill="#d5b868" font-family="monospace">${t.label}</text>
-            `,
-              )
-              .join('')}
-
-            <!-- Wave Path f(t) -->
-            <path d="${plot.pathData}" fill="none" stroke="url(#waveGlowGrad)" stroke-width="2.6" stroke-linecap="round"/>
-
-            <!-- Instantaneous Tangent Line f'(theta) -->
-            <line x1="${plot.tangentLine.x1}" y1="${plot.tangentLine.y1}" x2="${plot.tangentLine.x2}" y2="${plot.tangentLine.y2}" stroke="#fff0a8" stroke-width="2" stroke-dasharray="4 2"/>
-
-            <!-- Tangent Contact Point (theta, f(theta)) -->
-            <circle cx="${plot.contactPoint.x}" cy="${plot.contactPoint.y}" r="6" fill="#ffd978" opacity="0.6"/>
-            <circle cx="${plot.contactPoint.x}" cy="${plot.contactPoint.y}" r="3.2" fill="#ffffff"/>
-          </svg>
-        </div>
-
-        <!-- Four Arcane Theorem Plates -->
-        <div class="grimoire-plates-grid">
-          <div class="grimoire-plate plate-function">
-            <div class="plate-label">Plate I · Primordial Wave</div>
-            <div class="plate-formula"><strong>${snapshot.functionFormula}</strong></div>
-            <div class="plate-desc">Active trigonometric wave channeled by boss.</div>
-          </div>
-
-          <div class="grimoire-plate plate-rule">
-            <div class="plate-label">Plate II · Derivative Law</div>
-            <div class="plate-formula"><strong>${snapshot.derivativeRule}</strong></div>
-            <div class="plate-desc">Exact rate of instantaneous slope change.</div>
-          </div>
-
-          <div class="grimoire-plate plate-eval">
-            <div class="plate-label">Plate III · Tangent Phase Evaluation</div>
-            <div class="plate-eval-grid">
-              <div>Phase: <code>θ = ${snapshot.thetaPiLabel}</code></div>
-              <div>f(θ): <code>${snapshot.evaluatedFunction.toFixed(3)}</code></div>
-              <div>f′(θ) Exact: <code>${slopeSign}${snapshot.evaluatedSlope.toFixed(3)}</code></div>
-              <div>Numeric Δ: <code>${snapshot.numericSlope.toFixed(3)}</code></div>
-            </div>
-            ${snapshot.isCriticalPoint ? '<div class="crit-badge">★ CRITICAL INFLECTION POINT: Maximum Stagger Window!</div>' : ''}
-            ${snapshot.nearAsymptote ? '<div class="warn-badge">⚠ ASYMPTOTIC VOLATILITY: Wave Velocity Surge!</div>' : ''}
-          </div>
-
-          ${practice ? '' : `<div class="grimoire-plate plate-combat ${snapshot.isExactMatch ? 'match' : 'mismatch'}">
-            <div class="plate-label">Plate IV · Blade Attunement & Combat Resolution</div>
-            <div class="plate-combat-row">
-              <span class="plate-attuned">Attuned: <strong>${snapshot.chosenSigilLabel}</strong> (${snapshot.isExactMatch ? '✓ HARMONIC MATCH' : '✗ MISMATCH'})</span>
-              <span class="plate-mult">Multiplier: <strong>${snapshot.damageMultiplier.toFixed(2)}×</strong></span>
-            </div>
-            <div class="plate-desc">${snapshot.outcomeSummary}</div>
-          </div>`}
         </div>
 
         <div class="modal-footer">
-          <button id="worked-close" class="adv-btn primary astrolabe-btn">${closeLabel}</button>
+          <button id="worked-close" class="adv-btn primary">${closeLabel}</button>
         </div>
       </div>
     `;
     const close = this.workedModal.querySelector<HTMLButtonElement>('#worked-close')!;
-    close.focus();
+    close.focus({ preventScroll: true });
+    close.addEventListener('keydown', (event) => {
+      if (event.key === 'Tab') event.preventDefault();
+    });
     close.addEventListener('click', () => {
       this.closeWorkedExample();
       this.handlers.onCloseWorkedExample();
@@ -1866,15 +1872,13 @@ export class GameUI {
       this.bossStaggerFill.style.width = `${Math.max(0, Math.min(100, (boss.stagger / boss.maxStagger) * 100))}%`;
 
       if (recommended) {
-        const equipped = player.selectedSigil === recommended;
         const name = SIGIL_NAMES[recommended];
         const spell = `Boss spell · ${TRIG_NAMES[boss.activeFunction]}`;
-        const label = equipped ? `${name} equipped` : `Equip ${name}`;
-        const formula = `${boss.activeFunction}(θ) → ${SIGIL_BY_ID[recommended].shortFormula}`;
+        const label = `${name} auto-equipped`;
+        const formula = `f′(θ) = ${SIGIL_BY_ID[recommended].shortFormula}`;
         if (this.guidedBossSpell.textContent !== spell) this.guidedBossSpell.textContent = spell;
         if (this.guidedFormula.textContent !== formula) this.guidedFormula.textContent = formula;
-        if (this.equipMatchButton.textContent !== label) this.equipMatchButton.textContent = label;
-        this.equipMatchButton.disabled = equipped;
+        if (this.guidedEquipped.textContent !== label) this.guidedEquipped.textContent = label;
         return;
       }
 
@@ -1904,10 +1908,16 @@ export class GameUI {
     const path = this.activeSigilPill.querySelector('path')!;
     path.setAttribute('d', SIGIL_SVG_PATHS[selected]);
     path.setAttribute('stroke', sigil.accentHex);
+    const help = this.sigilPicker.querySelector('#sigil-picker-help')!;
+    const instructions = recommended
+      ? 'Guided Math equips the matching sigil for this boss.'
+      : 'Combat is paused. Choose a sigil, then cast when you’re ready.';
+    if (help.textContent !== instructions) help.textContent = instructions;
     for (const [id, button] of this.sigilButtons) {
       button.classList.toggle('active', id === selected);
       button.classList.toggle('sigil-recommended', id === recommended);
       button.setAttribute('aria-pressed', String(id === selected));
+      button.disabled = recommended !== null && id !== recommended;
     }
   }
 

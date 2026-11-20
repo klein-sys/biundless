@@ -408,7 +408,6 @@ export class GameEngine {
     this.input = new InputManager(canvas, {
       onSelectSigil: (sigil) => this.equipSigil(sigil),
       onToggleSigils: () => this.setSigilPickerOpen(!this.ui.isSigilPickerOpen()),
-      onEquipMatch: () => this.equipMatchingSigil(),
       onToggleDev: () => {
         if (!this.started || this.ui.isSigilPickerOpen() || this.ui.isBossRelicOpen() || this.ui.isWorkedExampleOpen()) return;
         this.paused = !this.paused;
@@ -474,6 +473,7 @@ export class GameEngine {
           this.dialogueRunner.setProgressionState(this.progression);
           applyProgressionToPlayer(this.player, computeEffectiveStats(this.progression));
           this.seenBossCutscenes.clear();
+          this.lastWorkedExample = null;
           this.warpToLandmark('hub');
           this.restoreBossesFromProgression();
         }
@@ -521,11 +521,11 @@ export class GameEngine {
       onToggleLockOn: () => this.handleToggleLockOn(),
       onOpenSigilPicker: () => this.setSigilPickerOpen(true),
       onCloseSigilPicker: () => this.setSigilPickerOpen(false),
-      onEquipMatch: () => this.equipMatchingSigil(),
       onTouchAction: (action) => this.input.triggerAction(action, performance.now() / 1000),
       onTouchStick: (nx, ny) => this.input.setTouchStick(nx, ny),
       onUpdateSettings: (next) => {
         this.settings = next;
+        this.autoEquipBossSigil();
         saveSettings(next);
         this.applyGraphicsSettings();
         this.syncControlVisibility();
@@ -556,16 +556,17 @@ export class GameEngine {
         this.input.setUiBlocked(true);
         this.input.setPointerLockAllowed(false);
         const activeBoss = this.getActiveBoss();
+        const fn = activeBoss?.activeFunction ?? 'sin';
         const snap =
           this.lastWorkedExample ??
           buildWorkedExample(
-            activeBoss ? activeBoss.activeFunction : 'sin',
-            activeBoss ? activeBoss.theta : Math.PI / 3,
-            this.player.selectedSigil,
+            fn,
+            activeBoss?.theta ?? Math.PI / 3,
+            expectedDerivativeFor(fn),
             'resonance_hit',
-            3.25,
+            1,
           );
-        this.ui.showWorkedExample(snap);
+        this.ui.showWorkedExample(snap, !this.lastWorkedExample);
       },
       onCloseWorkedExample: () => {
         if (!this.ui.isBossRelicOpen()) this.restoreGameplayInput();
@@ -708,18 +709,22 @@ export class GameEngine {
 
   private equipSigil(sigil: DerivativeSigilId): void {
     if (!this.started || this.paused || this.isCutscenePlaying || this.dialogueRunner.isOpen) return;
-    this.player.selectedSigil = sigil;
-    this.playerRig.setSigilAccent(SIGIL_BY_ID[sigil].accentHex);
-    this.input.setCurrentSigilIndex(DERIVATIVE_SIGILS.findIndex((entry) => entry.id === sigil));
+    if (this.recommendedSigil()) return;
+    this.applySigil(sigil);
     this.audio.unlock();
-    this.ui.updateSigilControls(sigil, this.recommendedSigil());
     this.ui.showToast(`${SIGIL_NAMES[sigil]} equipped`);
   }
 
-  private equipMatchingSigil(): void {
-    if (this.ui.isModalOpen()) return;
+  private applySigil(sigil: DerivativeSigilId): void {
+    this.player.selectedSigil = sigil;
+    this.playerRig.setSigilAccent(SIGIL_BY_ID[sigil].accentHex);
+    this.input.setCurrentSigilIndex(DERIVATIVE_SIGILS.findIndex((entry) => entry.id === sigil));
+    this.ui.updateSigilControls(sigil, this.recommendedSigil());
+  }
+
+  private autoEquipBossSigil(): void {
     const sigil = this.recommendedSigil();
-    if (sigil && sigil !== this.player.selectedSigil) this.equipSigil(sigil);
+    if (sigil && sigil !== this.player.selectedSigil) this.applySigil(sigil);
   }
 
   private setSigilPickerOpen(open: boolean): void {
@@ -854,6 +859,7 @@ export class GameEngine {
       this.triggerBossCutscene(target);
     } else {
       engageBoss(boss);
+      this.autoEquipBossSigil();
       this.audio.playBossCue();
       this.tangentArc.group.visible = true;
       this.cameraCtrl.lockedOn = true;
@@ -978,6 +984,7 @@ export class GameEngine {
     if (this.cutsceneBossId) {
       const boss = this.bossRuntimes[this.cutsceneBossId];
       engageBoss(boss);
+      this.autoEquipBossSigil();
       this.tangentArc.group.visible = true;
       this.cameraCtrl.lockedOn = true;
       this.cameraCtrl.resetSmoothing(this.playerPos, this.playerYaw);
@@ -1359,8 +1366,9 @@ export class GameEngine {
         this.freezeTheta,
         getTerrainHeight,
       );
-      if (this.activeBossId === id && events.length > 0) {
-        this.handleBossEvents(events, boss);
+      if (this.activeBossId === id) {
+        this.autoEquipBossSigil();
+        if (events.length > 0) this.handleBossEvents(events, boss);
       }
 
       bossRig.root.position.set(boss.x, boss.y, boss.z);
@@ -1486,6 +1494,7 @@ export class GameEngine {
           this.activeBossId = closestBossId;
           const b = this.bossRuntimes[closestBossId];
           engageBoss(b);
+          this.autoEquipBossSigil();
           this.audio.playBossCue();
           this.ui.showToast(`ENTERING: ${BOSS_CONFIGS[closestBossId].name.toUpperCase()} TERRITORY`);
         }
@@ -1573,6 +1582,7 @@ export class GameEngine {
     this.player.resonanceCooldown = 0.55;
     this.bladeSwingTimer = 0.25;
 
+    this.autoEquipBossSigil();
     const sigilMeta = SIGIL_BY_ID[this.player.selectedSigil];
     const color = new THREE.Color(sigilMeta.accentHex).getHex();
 

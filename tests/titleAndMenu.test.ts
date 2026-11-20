@@ -12,6 +12,7 @@ import {
 } from '../src/rpg/progressionSystem';
 import { GameUI, type UIHandlers } from '../src/ui/GameUI';
 import { DEFAULT_SETTINGS } from '../src/engine/GraphicsSettings';
+import { buildWorkedExample } from '../src/math/trigDerivatives';
 
 class MockLocalStorage {
   private store: Record<string, string> = {};
@@ -668,6 +669,26 @@ describe('GameUI Title Screen Sidebar & In-Sidebar Settings Switch', () => {
 
     ui.closeWorkedExample();
     expect(ui.isWorkedExampleOpen()).toBe(false);
+  });
+
+  it('shows the substituted derivative, matching sigil, and recorded combat result', () => {
+    const ui = new GameUI(root as any, handlers, DEFAULT_SETTINGS);
+    ui.showWorkedExample(buildWorkedExample('sin', Math.PI / 3, 'cos', 'ward_shattered', 3.6));
+
+    const worked = root.querySelector('#worked-modal')!;
+    expect(worked.querySelector('.solution-steps')!.textContent).toContain('f′(θ₀) ≈ cos(1.047198) ≈ 0.500');
+    expect(worked.querySelector('.solution-steps')!.textContent).toContain('Equip Cosine');
+    expect(worked.querySelector('.solution-outcome')!.textContent).toContain('3.60× damage');
+  });
+
+  it('displays undefined at an asymptote and gives a practice example no combat result', () => {
+    const ui = new GameUI(root as any, handlers, DEFAULT_SETTINGS);
+    ui.showWorkedExample(buildWorkedExample('tan', Math.PI / 2, 'sec2', 'resonance_hit', 1), true);
+
+    const worked = root.querySelector('#worked-modal')!;
+    expect(worked.querySelector('.solution-steps')!.textContent).toContain('cos(θ₀) = 0, so f′(θ₀) is undefined');
+    expect(worked.querySelector('.solution-tangent')).toBeNull();
+    expect(worked.querySelector('.solution-outcome')).toBeNull();
   });
 
   it('syncSettings updates currentSettings and re-renders active pills in title settings view', () => {

@@ -30,8 +30,8 @@ export interface TrigDefinition {
   readonly derivativeSigil: DerivativeSigilId;
   readonly derivativeRule: string;
   readonly asymptoteDenominator: 'none' | 'cos' | 'sin';
-  readonly evaluate: (theta: number) => number;
-  readonly evaluateDerivative: (theta: number) => number;
+  readonly evaluate: (theta: number, bounded?: boolean) => number;
+  readonly evaluateDerivative: (theta: number, bounded?: boolean) => number;
 }
 
 export type StrikeOutcomeKind =
@@ -64,8 +64,8 @@ export interface WorkedExampleSnapshot {
 const ASYMPTOTE_EPSILON = 0.08;
 const MAX_CLAMPED_VALUE = 12;
 
-function safeDenom(denom: number): number {
-  if (Math.abs(denom) < ASYMPTOTE_EPSILON) {
+function denominator(denom: number, bounded: boolean): number {
+  if (bounded && Math.abs(denom) < ASYMPTOTE_EPSILON) {
     return denom >= 0 ? ASYMPTOTE_EPSILON : -ASYMPTOTE_EPSILON;
   }
   return denom;
@@ -171,9 +171,9 @@ export const TRIG_DEFINITIONS: Record<TrigFunctionId, TrigDefinition> = {
     derivativeSigil: 'sec2',
     derivativeRule: "d/dθ [tan(θ)] = sec²(θ)",
     asymptoteDenominator: 'cos',
-    evaluate: (theta) => Math.sin(theta) / safeDenom(Math.cos(theta)),
-    evaluateDerivative: (theta) => {
-      const c = safeDenom(Math.cos(theta));
+    evaluate: (theta, bounded = true) => Math.sin(theta) / denominator(Math.cos(theta), bounded),
+    evaluateDerivative: (theta, bounded = true) => {
+      const c = denominator(Math.cos(theta), bounded);
       return 1 / (c * c);
     },
   },
@@ -183,9 +183,9 @@ export const TRIG_DEFINITIONS: Record<TrigFunctionId, TrigDefinition> = {
     derivativeSigil: 'neg_csc2',
     derivativeRule: "d/dθ [cot(θ)] = -csc²(θ)",
     asymptoteDenominator: 'sin',
-    evaluate: (theta) => Math.cos(theta) / safeDenom(Math.sin(theta)),
-    evaluateDerivative: (theta) => {
-      const s = safeDenom(Math.sin(theta));
+    evaluate: (theta, bounded = true) => Math.cos(theta) / denominator(Math.sin(theta), bounded),
+    evaluateDerivative: (theta, bounded = true) => {
+      const s = denominator(Math.sin(theta), bounded);
       return -1 / (s * s);
     },
   },
@@ -195,9 +195,9 @@ export const TRIG_DEFINITIONS: Record<TrigFunctionId, TrigDefinition> = {
     derivativeSigil: 'sec_tan',
     derivativeRule: "d/dθ [sec(θ)] = sec(θ)·tan(θ)",
     asymptoteDenominator: 'cos',
-    evaluate: (theta) => 1 / safeDenom(Math.cos(theta)),
-    evaluateDerivative: (theta) => {
-      const c = safeDenom(Math.cos(theta));
+    evaluate: (theta, bounded = true) => 1 / denominator(Math.cos(theta), bounded),
+    evaluateDerivative: (theta, bounded = true) => {
+      const c = denominator(Math.cos(theta), bounded);
       return Math.sin(theta) / (c * c);
     },
   },
@@ -207,9 +207,9 @@ export const TRIG_DEFINITIONS: Record<TrigFunctionId, TrigDefinition> = {
     derivativeSigil: 'neg_csc_cot',
     derivativeRule: "d/dθ [csc(θ)] = -csc(θ)·cot(θ)",
     asymptoteDenominator: 'sin',
-    evaluate: (theta) => 1 / safeDenom(Math.sin(theta)),
-    evaluateDerivative: (theta) => {
-      const s = safeDenom(Math.sin(theta));
+    evaluate: (theta, bounded = true) => 1 / denominator(Math.sin(theta), bounded),
+    evaluateDerivative: (theta, bounded = true) => {
+      const s = denominator(Math.sin(theta), bounded);
       return -Math.cos(theta) / (s * s);
     },
   },
@@ -231,6 +231,40 @@ function computeAsymptoteState(
 
 export function expectedDerivativeFor(fn: TrigFunctionId): DerivativeSigilId {
   return TRIG_DEFINITIONS[fn].derivativeSigil;
+}
+
+function asymptoteBranch(def: TrigDefinition, theta: number): number {
+  if (def.asymptoteDenominator === 'none') return 0;
+  const offset = def.asymptoteDenominator === 'cos' ? Math.PI / 2 : 0;
+  return Math.floor((theta - offset) / Math.PI);
+}
+
+function isUndefinedAt(def: TrigDefinition, theta: number): boolean {
+  if (def.asymptoteDenominator === 'none') return false;
+  const offset = def.asymptoteDenominator === 'cos' ? Math.PI / 2 : 0;
+  const nearestPole = offset + Math.round((theta - offset) / Math.PI) * Math.PI;
+  return theta === nearestPole;
+}
+
+const CALCULATOR_RULES: Partial<Record<TrigFunctionId, string>> = {
+  tan: '1 / cos²(θ)',
+  cot: '−1 / sin²(θ)',
+  sec: 'sin(θ) / cos²(θ)',
+  csc: '−cos(θ) / sin²(θ)',
+};
+
+export function getDerivativeSolution(fn: TrigFunctionId, theta: number) {
+  const def = TRIG_DEFINITIONS[fn];
+  const nearPole = computeAsymptoteState(def.asymptoteDenominator, theta).nearAsymptote;
+  const angle = nearPole ? theta.toString() : Number(theta.toFixed(6)).toString();
+  const derivative = def.derivativeRule.split(' = ')[1].replace('-', '−').replace('·', ' · ');
+  return {
+    angle,
+    substitution: derivative.replaceAll('θ', angle),
+    calculatorSubstitution: CALCULATOR_RULES[fn]?.replaceAll('θ', angle),
+    slope: isUndefinedAt(def, theta) ? null : def.evaluateDerivative(theta, false),
+    denominator: def.asymptoteDenominator,
+  };
 }
 
 export function evaluateTrig(fn: TrigFunctionId, theta: number): TrigEvaluation {
@@ -327,11 +361,12 @@ export function buildWorkedExample(
 
 export interface WavePlotData {
   readonly pathData: string;
-  readonly tangentLine: { x1: number; y1: number; x2: number; y2: number };
-  readonly contactPoint: { x: number; y: number };
+  readonly tangentLine: { x1: number; y1: number; x2: number; y2: number } | null;
+  readonly contactPoint: { x: number; y: number } | null;
   readonly axisY: number;
   readonly width: number;
   readonly height: number;
+  readonly yScale: number;
   readonly ticks: Array<{ x: number; label: string }>;
 }
 
@@ -345,33 +380,31 @@ export function generateWavePlotData(
   const plotW = width - padX * 2;
   const axisY = height / 2;
   const yScale = 22;
-  const maxClamp = 2.4;
-
-  const samples = 48;
-  const points: Array<[number, number]> = [];
-
+  const def = TRIG_DEFINITIONS[fn];
+  const samples = 120;
+  let pathData = '';
+  let previousBranch: number | undefined;
   for (let i = 0; i <= samples; i++) {
     const t = (i / samples) * Math.PI * 2;
     const x = padX + (i / samples) * plotW;
-    const val = evaluateTrig(fn, t).value;
-    const clamped = Math.max(-maxClamp, Math.min(maxClamp, val));
-    const y = axisY - clamped * yScale;
-    points.push([x, y]);
+    if (isUndefinedAt(def, t)) {
+      previousBranch = undefined;
+      continue;
+    }
+    const branch = asymptoteBranch(def, t);
+    const y = axisY - def.evaluate(t, false) * yScale;
+    pathData += ` ${branch === previousBranch ? 'L' : 'M'} ${x.toFixed(1)} ${y.toFixed(1)}`;
+    previousBranch = branch;
   }
 
-  let pathData = '';
-  for (let i = 0; i < points.length; i++) {
-    const [px, py] = points[i];
-    if (i === 0) pathData += `M ${px.toFixed(1)} ${py.toFixed(1)}`;
-    else pathData += ` L ${px.toFixed(1)} ${py.toFixed(1)}`;
-  }
-
-  const normTheta = ((theta % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+  const normTheta = theta >= 0 && theta <= 2 * Math.PI
+    ? theta
+    : ((theta % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
   const cx = padX + (normTheta / (Math.PI * 2)) * plotW;
-  const cVal = evaluateTrig(fn, normTheta).value;
-  const cy = axisY - Math.max(-maxClamp, Math.min(maxClamp, cVal)) * yScale;
+  const cy = axisY - def.evaluate(theta, false) * yScale;
+  const showContact = !isUndefinedAt(def, theta) && cy >= 6 && cy <= height - 22;
 
-  const slope = evaluateExactDerivative(fn, normTheta).value;
+  const slope = def.evaluateDerivative(theta, false);
   const dPixelSlope = -slope * yScale * ((Math.PI * 2) / plotW);
   const tanAngle = Math.atan(dPixelSlope);
   const span = 42;
@@ -395,20 +428,21 @@ export function generateWavePlotData(
   }));
 
   return {
-    pathData,
-    tangentLine: {
+    pathData: pathData.trim(),
+    tangentLine: showContact ? {
       x1: Number(x1.toFixed(1)),
       y1: Number(y1.toFixed(1)),
       x2: Number(x2.toFixed(1)),
       y2: Number(y2.toFixed(1)),
-    },
-    contactPoint: {
+    } : null,
+    contactPoint: showContact ? {
       x: Number(cx.toFixed(1)),
       y: Number(cy.toFixed(1)),
-    },
+    } : null,
     axisY,
     width,
     height,
+    yScale,
     ticks,
   };
 }

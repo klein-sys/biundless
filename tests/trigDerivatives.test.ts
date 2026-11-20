@@ -7,6 +7,7 @@ import {
   evaluateTrig,
   expectedDerivativeFor,
   formatThetaPi,
+  getDerivativeSolution,
   isCriticalPoint,
   type TrigFunctionId,
 } from '../src/math/trigDerivatives';
@@ -74,6 +75,27 @@ describe('trigDerivatives seam', () => {
     expect(example.evaluatedSlope).toBeCloseTo(0.5, 4);
     expect(example.outcomeSummary).toContain('Shattered');
     expect(example.damageMultiplier).toBeCloseTo(3.4, 2);
+  });
+
+  it.each([
+    ['sin', 0.5], ['cos', -Math.sqrt(3) / 2], ['tan', 4],
+    ['cot', -4 / 3], ['sec', 2 * Math.sqrt(3)], ['csc', -2 / 3],
+  ] as const)('evaluates the actual %s derivative at π/3 for the lesson', (fn, slope) => {
+    const solution = getDerivativeSolution(fn, Math.PI / 3);
+    expect(solution.substitution).toContain('1.047198');
+    expect(solution.slope).toBeCloseTo(slope);
+  });
+
+  it('distinguishes an undefined derivative from a steep but finite slope', () => {
+    expect(getDerivativeSolution('tan', Math.PI / 2).slope).toBeNull();
+    expect(getDerivativeSolution('cot', Math.PI).slope).toBeNull();
+    expect(getDerivativeSolution('tan', Math.PI / 2 - 0.001).slope).toBeGreaterThan(999_999);
+  });
+
+  it('shows how to evaluate a secant product using sine and cosine', () => {
+    const solution = getDerivativeSolution('sec', 0.8);
+    expect(solution.substitution).toBe('sec(0.8) · tan(0.8)');
+    expect(solution.calculatorSubstitution).toBe('sin(0.8) / cos²(0.8)');
   });
 });
 
