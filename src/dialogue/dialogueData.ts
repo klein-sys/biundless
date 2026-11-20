@@ -97,7 +97,7 @@ export const DIALOGUE_NODES: Record<string, DialogueNode> = {
     speakerName: 'Archmage Aurelius',
     speakerTitle: 'Guardian of the Astrolabe & Guide Wizard',
     speakerRole: 'aurelius',
-    text: 'When Vespera channels sin(θ), its derivative is cos(θ). Open the sigil picker with Q or tap Sigil, choose Cosine, then cast at her to break the ward. Guided math marks the matching sigil as her spell changes.',
+    text: 'When Vespera casts Sine, sin(θ), use Cosine, cos(θ). Cosine gives the slope of Sine, so the matching sigil can break her ward. Press Q or tap Sigils to choose it. In Guided math, you can press G or tap Equip Cosine to equip it, then cast at her.',
     choices: [
       {
         text: 'What about tangent and secant?',

@@ -28,8 +28,8 @@ Rather than an unrelated quiz popup, all **six basic trigonometric derivatives**
 - **3rd-Person ↔ 1st-Person POV Toggle**: Over-the-shoulder orbit with target lock-on and smooth switching (`V` key / HUD button) to 1st-person Astrolabe view with Tangent Reticle.
 - **Ruined Sanctuary Hub + 3 Boss Fog Gates**: Explore the sanctuary and walk into any Fog Gate (`F` / `GATE`), or warp directly via the Boss Menu / Dev Drawer.
 - **Desktop & Mobile Web Controls**:
-  - **Desktop**: `WASD` Move · Mouse Look · `LMB` Strike · `RMB`/`E` Cast Derivative Sigil · `1–6` / Scroll Select Sigil · `Q` Slow-Mo Radial Wheel · `Space`/`Shift` Dodge · `R` Heal Flask · `V` POV · `Tab` Lock-On · `F9` Dev Drawer · `Esc` Settings.
-  - **Mobile**: Virtual Left Thumbstick · Right-Side Drag Look · Tactile Action Buttons · Slow-Mo Radial Sigil Wheel.
+  - **Desktop**: `WASD` Move · Mouse Look · `LMB` Strike · `RMB`/`E` Cast · `1–6` / Scroll Select Sigil · `Q` Open Sigils · `G` Equip Match (Guided math) · `Space` Jump · `Ctrl`/`C` Dodge · `R` Heal · `F` Interact · `Esc` Menu.
+  - **Mobile**: Left thumbstick to move · Right-side drag to look · Tap Sigils, Equip, and Cast.
 - **Graphics & FPS Controls**: `Low` / `Medium` / `High` / `Ultra` presets and `30` / `60` / `120` / `Unlimited` FPS caps persisted to `localStorage`.
 - **Dev & MATH 101 Class Demo Drawer (`DEV` / `F9`)**: Boss warp, God Mode, Infinite Stamina, Freeze $\theta$, live telemetry ($f(\theta)$, exact vs. numeric $f'(\theta)$, FPS, draw calls), and a **Worked Example Presentation Overlay**.
 

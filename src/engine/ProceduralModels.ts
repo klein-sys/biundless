@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { BossId } from '../bosses/bossDefinitions';
+import { BOSS_CONFIGS, type BossId } from '../bosses/bossDefinitions';
 import { evaluateExactDerivative, evaluateTrig, type TrigFunctionId } from '../math/trigDerivatives';
 import {
   BIOME_LANDMARKS,
@@ -6360,5 +6360,36 @@ export function createTrailheadSignpost(_label?: string): THREE.Group {
   cairn.scale.set(1.4, 0.6, 1.4);
   group.add(cairn);
 
+  return group;
+}
+
+/** A low-poly trophy on a grounded, beveled stand. */
+export function createBossRelicModel(id: BossId): THREE.Group {
+  const group = new THREE.Group();
+  const stone = new THREE.MeshStandardMaterial({ color: 0x243646, roughness: 0.86 });
+  const trim = new THREE.MeshStandardMaterial({ color: 0xf1c378, metalness: 0.45, roughness: 0.42 });
+  const accent = BOSS_CONFIGS[id].accentColor;
+  const gem = new THREE.MeshStandardMaterial({
+    color: accent, emissive: accent, emissiveIntensity: 0.58, roughness: 0.34, flatShading: true,
+  });
+  const stand = new THREE.Mesh(new THREE.LatheGeometry([
+    new THREE.Vector2(0.84, -0.12), new THREE.Vector2(0.84, 0.12),
+    new THREE.Vector2(0.55, 0.32), new THREE.Vector2(0.46, 0.72),
+    new THREE.Vector2(0.59, 0.85), new THREE.Vector2(0, 0.85),
+  ], 8), stone);
+  const rim = new THREE.Mesh(new THREE.TorusGeometry(0.52, 0.055, 5, 16), trim);
+  rim.rotation.x = Math.PI / 2;
+  rim.position.y = 0.79;
+
+  const trophyGeometry = id === 'witch' ? new THREE.OctahedronGeometry(0.53)
+    : id === 'lich' ? new THREE.CylinderGeometry(0.47, 0.47, 0.2, 6)
+    : new THREE.IcosahedronGeometry(0.49);
+  const trophy = new THREE.Mesh(trophyGeometry, gem);
+  trophy.position.y = 1.33;
+  if (id === 'witch') trophy.scale.y = 1.15;
+  if (id === 'lich') trophy.rotation.x = Math.PI / 2;
+  if (id === 'dragon') trophy.scale.set(1.4, 1.1, 0.6);
+  group.add(stand, rim, trophy);
+  group.visible = false;
   return group;
 }

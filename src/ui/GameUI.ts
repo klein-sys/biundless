@@ -21,6 +21,8 @@ import {
   generateWavePlotData,
   isCriticalPoint,
   SIGIL_BY_ID,
+  SIGIL_NAMES,
+  TRIG_NAMES,
   type DerivativeSigilId,
   type WorkedExampleSnapshot,
 } from '../math/trigDerivatives';
@@ -36,6 +38,7 @@ import {
   resetProgression,
   type ProgressionState,
 } from '../rpg/progressionSystem';
+import { BOSS_RELIC_NAMES, getRelicWorkedExample, type BossRelic } from '../rpg/bossRelics';
 import { InteractiveAtlas, worldToMapNormalized } from './InteractiveAtlas';
 import { fullscreenManager } from './FullscreenManager';
 
@@ -52,8 +55,9 @@ export interface UIHandlers {
   onSelectSigil: (sigil: DerivativeSigilId) => void;
   onTogglePov: () => void;
   onToggleLockOn: () => void;
-  onOpenWheel: () => void;
-  onCloseWheel: () => void;
+  onOpenSigilPicker: () => void;
+  onCloseSigilPicker: () => void;
+  onEquipMatch?: () => void;
   onTouchAction: (action: GameAction) => void;
   onTouchStick: (nx: number, ny: number) => void;
   onUpdateSettings: (next: GameSettings) => void;
@@ -89,7 +93,10 @@ export class GameUI {
   private titleOverlay!: HTMLElement;
   private settingsModal!: HTMLElement;
   private workedModal!: HTMLElement;
-  private radialWheel!: HTMLElement;
+  private sigilPicker!: HTMLElement;
+  private relicModal!: HTMLElement;
+  private onRelicClose?: () => void;
+  private pickerOpener: HTMLElement | null = null;
   private mobileControls!: HTMLElement;
   private fpReticle!: HTMLElement;
   private regionBanner!: HTMLElement;
@@ -125,6 +132,10 @@ export class GameUI {
   private bossHpFill!: HTMLElement;
   private bossStaggerFill!: HTMLElement;
   private equationRibbon!: HTMLElement;
+  private guidedSigil!: HTMLElement;
+  private guidedBossSpell!: HTMLElement;
+  private guidedFormula!: HTMLElement;
+  private equipMatchButton!: HTMLButtonElement;
 
   private cutsceneOverlay!: HTMLElement;
   private cutsceneBossName!: HTMLElement;
@@ -137,8 +148,7 @@ export class GameUI {
   private hudBottomRight!: HTMLElement;
 
   private activeSigilPill!: HTMLElement;
-  private sigilPipButtons = new Map<DerivativeSigilId, HTMLElement>();
-  private radialSigilButtons = new Map<DerivativeSigilId, HTMLElement>();
+  private sigilButtons = new Map<DerivativeSigilId, HTMLButtonElement>();
 
   private toastTimeout: number | null = null;
   private currentRegionId: string | null = null;
@@ -253,21 +263,25 @@ export class GameUI {
           <div id="boss-stagger-fill" class="boss-stagger-fill" style="width:0%"></div>
         </div>
         <div id="equation-ribbon" class="equation-ribbon"></div>
+        <div id="guided-sigil" class="guided-sigil interactive hidden">
+          <span id="guided-boss-spell"></span>
+          <button id="equip-match" class="adv-btn primary" title="Equip matching sigil (G)"></button>
+          <small id="guided-formula"></small>
+        </div>
       </div>
 
       <!-- Bottom Right: Compact Active Derivative Medallion & Streamlined 6-Pip Selector -->
       <div class="hud-bottom-right interactive">
         <div class="derivative-dock">
-          <button id="active-medallion" class="active-medallion" title="Derivative Attunement Wheel (Q / Click)">
+          <button id="active-medallion" class="active-medallion" title="Open Sigils (Q)" aria-haspopup="dialog">
             <svg id="medallion-svg" class="medallion-curve" viewBox="0 0 32 28">
               <path d="${SIGIL_SVG_PATHS.cos}" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/>
             </svg>
             <div class="medallion-meta">
-              <span id="medallion-label" class="medallion-label">cos θ</span>
-              <span class="medallion-hint">d/dθ</span>
+              <span id="medallion-label" class="medallion-label">Cosine equipped</span>
+              <span class="medallion-hint">Sigils · Q</span>
             </div>
           </button>
-          <div id="sigil-pips" class="sigil-pips-row"></div>
         </div>
       </div>
 
@@ -284,7 +298,7 @@ export class GameUI {
           </div>
         </div>
 
-        <!-- Bottom Center: Horizontal Utility Bar (Town Warp, Heal, Talk, Sigil Wheel) -->
+        <!-- Bottom Center: Horizontal Utility Bar (Town Warp, Heal, Interact, Sigils) -->
         <div id="mobile-utility-bar" class="mobile-utility-bar">
           <button id="m-town" class="m-util-btn" aria-label="Return to Solstice Haven">
             <div class="m-util-icon">🏛️</div>
@@ -299,9 +313,9 @@ export class GameUI {
             <div class="m-util-icon">💬</div>
             <span class="m-util-label">TALK</span>
           </button>
-          <button id="m-wheel" class="m-util-btn" aria-label="Attunement Wheel">
+          <button id="m-sigils" class="m-util-btn" aria-label="Sigils" aria-haspopup="dialog">
             <div class="m-util-icon">⚙️</div>
-            <span class="m-util-label">SIGIL</span>
+            <span class="m-util-label">SIGILS</span>
           </button>
         </div>
 
@@ -356,18 +370,22 @@ export class GameUI {
         <div id="dialogue-choices" class="dialogue-choices"></div>
       </div>
 
-      <!-- Slow-Mo Radial Wheel -->
-      <div id="radial-wheel" class="radial-wheel-backdrop hidden">
-        <div id="radial-wheel-inner" class="radial-wheel">
-          <div class="radial-center">
-            <span class="radial-title">ATTUNE</span>
-            <span class="radial-sub">0.2× Slow-Mo</span>
-          </div>
+      <div id="sigil-picker" class="modal-backdrop hidden">
+        <div class="adventure-modal sigil-picker-panel" role="dialog" aria-modal="true" aria-labelledby="sigil-picker-title">
+          <header class="sigil-picker-heading">
+            <div>
+              <h2 id="sigil-picker-title">Choose a sigil</h2>
+              <p>Combat is paused. Choose a sigil, then cast when you’re ready.</p>
+            </div>
+            <button id="sigil-picker-close" class="adv-btn">Close</button>
+          </header>
+          <div id="sigil-choices" class="sigil-choices"></div>
         </div>
       </div>
 
       <!-- Modals: Settings/Menu, Worked Example, Title Sidebar -->
       <div id="settings-modal" class="modal-backdrop hidden"></div>
+      <div id="boss-relic-modal" class="modal-backdrop hidden"></div>
       <div id="worked-modal" class="modal-backdrop hidden"></div>
       <aside id="title-overlay" class="title-sidebar-overlay"></aside>
 
@@ -437,6 +455,11 @@ export class GameUI {
     this.bossHpFill = this.root.querySelector('#boss-hp-fill')!;
     this.bossStaggerFill = this.root.querySelector('#boss-stagger-fill')!;
     this.equationRibbon = this.root.querySelector('#equation-ribbon')!;
+    this.guidedSigil = this.root.querySelector('#guided-sigil')!;
+    this.guidedBossSpell = this.root.querySelector('#guided-boss-spell')!;
+    this.guidedFormula = this.root.querySelector('#guided-formula')!;
+    this.equipMatchButton = this.root.querySelector('#equip-match')!;
+    this.equipMatchButton.addEventListener('click', () => this.handlers.onEquipMatch?.());
 
     this.hudTopLeft = this.root.querySelector('.hud-top-left')!;
     this.hudTopRight = this.root.querySelector('.hud-top-right')!;
@@ -444,7 +467,8 @@ export class GameUI {
 
     this.activeSigilPill = this.root.querySelector('#active-medallion')!;
     this.mobileControls = this.root.querySelector('#mobile-controls')!;
-    this.radialWheel = this.root.querySelector('#radial-wheel')!;
+    this.sigilPicker = this.root.querySelector('#sigil-picker')!;
+    this.relicModal = this.root.querySelector('#boss-relic-modal')!;
     this.settingsModal = this.root.querySelector('#settings-modal')!;
     this.workedModal = this.root.querySelector('#worked-modal')!;
     this.titleOverlay = this.root.querySelector('#title-overlay')!;
@@ -487,63 +511,45 @@ export class GameUI {
       });
     }
 
-    this.buildSigilPips();
-    this.buildRadialWheel();
+    this.buildSigilPicker();
     this.buildTitleOverlay();
     this.bindTopControls();
     this.bindMobileControls();
     this.setHUDVisible(false);
   }
 
-  private buildSigilPips(): void {
-    const row = this.root.querySelector('#sigil-pips')!;
-    DERIVATIVE_SIGILS.forEach((sigil, idx) => {
-      const pip = document.createElement('button');
-      pip.className = 'sigil-pip';
-      pip.title = `${sigil.label} — ${sigil.hint} (Key ${idx + 1})`;
-      pip.innerHTML = `
-        <span class="pip-key">${idx + 1}</span>
-        <svg class="pip-curve" viewBox="0 0 32 28">
-          <path d="${SIGIL_SVG_PATHS[sigil.id]}" fill="none" stroke="${sigil.accentHex}" stroke-width="2.4" stroke-linecap="round"/>
-        </svg>
-        <span class="pip-name">${sigil.label}</span>
-        <span class="sigil-match-label">Match</span>
+  private buildSigilPicker(): void {
+    const choices = this.root.querySelector('#sigil-choices')!;
+    DERIVATIVE_SIGILS.forEach((sigil, index) => {
+      const button = document.createElement('button');
+      button.className = 'sigil-choice';
+      button.innerHTML = `
+        <strong>${SIGIL_NAMES[sigil.id]}</strong>
+        <span class="sigil-choice-formula">${sigil.shortFormula} <kbd>${index + 1}</kbd></span>
+        <span class="sigil-choice-status">
+          <span class="sigil-match-label">Matches boss</span>
+          <span class="sigil-equipped-label">Equipped</span>
+        </span>
       `;
-      pip.addEventListener('click', (e) => {
-        e.stopPropagation();
+      button.addEventListener('click', () => {
         this.handlers.onSelectSigil(sigil.id);
+        this.handlers.onCloseSigilPicker();
       });
-      row.appendChild(pip);
-      this.sigilPipButtons.set(sigil.id, pip);
+      choices.appendChild(button);
+      this.sigilButtons.set(sigil.id, button);
     });
-  }
-
-  private buildRadialWheel(): void {
-    const inner = this.root.querySelector('#radial-wheel-inner')!;
-    const r = 110;
-    DERIVATIVE_SIGILS.forEach((sigil, idx) => {
-      const angle = (idx / DERIVATIVE_SIGILS.length) * Math.PI * 2 - Math.PI / 2;
-      const node = document.createElement('button');
-      node.className = 'radial-node';
-      node.style.left = `${155 + Math.cos(angle) * r}px`;
-      node.style.top = `${155 + Math.sin(angle) * r}px`;
-      node.innerHTML = `
-        <svg class="radial-svg" viewBox="0 0 32 28">
-          <path d="${SIGIL_SVG_PATHS[sigil.id]}" fill="none" stroke="${sigil.accentHex}" stroke-width="2.4" stroke-linecap="round"/>
-        </svg>
-        <span style="color:${sigil.accentHex}">${sigil.label}</span>
-        <span class="sigil-match-label">Match</span>
-      `;
-      node.addEventListener('click', (e) => {
-        e.stopPropagation();
-        this.handlers.onSelectSigil(sigil.id);
-        this.handlers.onCloseWheel();
-      });
-      inner.appendChild(node);
-      this.radialSigilButtons.set(sigil.id, node);
+    this.sigilPicker.querySelector('#sigil-picker-close')!.addEventListener('click', () => this.handlers.onCloseSigilPicker());
+    this.sigilPicker.addEventListener('click', (event) => {
+      if (event.target === this.sigilPicker) this.handlers.onCloseSigilPicker();
     });
-
-    this.radialWheel.addEventListener('click', () => this.handlers.onCloseWheel());
+    this.sigilPicker.addEventListener('keydown', (event) => {
+      if (event.key !== 'Tab') return;
+      const buttons = this.sigilPicker.querySelectorAll<HTMLButtonElement>('button');
+      const edge = event.shiftKey ? buttons[0] : buttons[buttons.length - 1];
+      if (document.activeElement !== edge) return;
+      event.preventDefault();
+      (event.shiftKey ? buttons[buttons.length - 1] : buttons[0]).focus();
+    });
   }
 
   public setHUDVisible(visible: boolean): void {
@@ -601,6 +607,10 @@ export class GameUI {
 
   public closeWorkedExample(): void {
     this.workedModal.classList.add('hidden');
+    if (this.isBossRelicOpen()) {
+      this.relicModal.removeAttribute('inert');
+      this.relicModal.querySelector<HTMLButtonElement>('#relic-math')?.focus();
+    }
   }
 
   public buildTitleOverlay(): void {
@@ -627,8 +637,8 @@ export class GameUI {
             and trigger devastating Critical Staggers.
           </p>
           <div class="controls-cheat">
-            <div><strong>Desktop:</strong> WASD Move · Shift Sprint · Space Jump · Ctrl/C Dash · LMB Strike · RMB/E Cast Sigil · 1–6 / Q Wheel · F Interact · M Atlas · V POV · Esc Menu</div>
-            <div><strong>Mobile:</strong> Smooth Left Stick · Right Drag Camera · Responsive Strike / Cast / Jump / Dash buttons</div>
+            <div><strong>Desktop:</strong> WASD Move · Shift Sprint · Space Jump · Ctrl/C Dash · LMB Strike · RMB/E Cast Sigil · 1–6 Select · Q Sigils · G Equip Match · F Interact · M Atlas · V POV · Esc Menu</div>
+            <div><strong>Mobile:</strong> Left Stick to move · Right Drag to look · Tap Sigils, Equip, and Cast</div>
           </div>
           <div class="title-actions">
             ${
@@ -900,7 +910,7 @@ export class GameUI {
     });
 
     this.activeSigilPill.addEventListener('click', () => {
-      this.handlers.onOpenWheel();
+      this.handlers.onOpenSigilPicker();
     });
   }
 
@@ -964,7 +974,7 @@ export class GameUI {
     mapBtn('#m-jump', () => this.handlers.onTouchAction('jump'));
     mapBtn('#m-heal', () => this.handlers.onTouchAction('heal'));
     mapBtn('#m-lock', () => this.handlers.onToggleLockOn());
-    mapBtn('#m-wheel', () => this.handlers.onOpenWheel());
+    mapBtn('#m-sigils', () => this.handlers.onOpenSigilPicker());
     mapBtn('#m-town', () => {
       if (this.handlers.onReturnToTown) {
         this.handlers.onReturnToTown();
@@ -982,8 +992,24 @@ export class GameUI {
     this.pointerHint.classList.toggle('hidden', !visible);
   }
 
-  public setRadialWheelVisible(visible: boolean): void {
-    this.radialWheel.classList.toggle('hidden', !visible);
+  public isSigilPickerOpen(): boolean {
+    return !this.sigilPicker.classList.contains('hidden');
+  }
+
+  public setSigilPickerVisible(visible: boolean): void {
+    if (visible === this.isSigilPickerOpen()) return;
+    this.sigilPicker.classList.toggle('hidden', !visible);
+    this.activeSigilPill.setAttribute('aria-expanded', String(visible));
+    this.root.querySelector('#m-sigils')?.setAttribute('aria-expanded', String(visible));
+    if (visible) {
+      this.pickerOpener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      const first = this.sigilPicker.querySelector<HTMLElement>('.sigil-recommended')
+        ?? this.sigilPicker.querySelector<HTMLElement>('.sigil-choice.active');
+      (first ?? this.sigilPicker.querySelector<HTMLElement>('#sigil-picker-close'))?.focus();
+    } else {
+      this.pickerOpener?.focus();
+      this.pickerOpener = null;
+    }
   }
 
   public isModalOpen(): boolean {
@@ -991,7 +1017,7 @@ export class GameUI {
       (this.atlas && this.atlas.visible) ||
       !this.titleOverlay.classList.contains('hidden') ||
       !this.settingsModal.classList.contains('hidden') ||
-      !this.workedModal.classList.contains('hidden')
+      this.isSigilPickerOpen() || this.isBossRelicOpen() || this.isWorkedExampleOpen()
     );
   }
 
@@ -1032,13 +1058,13 @@ export class GameUI {
     this.settingsModal.classList.add('hidden');
   }
 
-  public showToast(msg: string): void {
+  public showToast(msg: string, durationMs = 1850): void {
     this.combatToast.textContent = msg;
     this.combatToast.classList.add('visible');
     if (this.toastTimeout !== null) window.clearTimeout(this.toastTimeout);
     this.toastTimeout = window.setTimeout(() => {
       this.combatToast.classList.remove('visible');
-    }, 1850);
+    }, durationMs);
   }
 
   public updateRegion(landmark: BiomeLandmark | null, bossEngaged: boolean = false): void {
@@ -1137,6 +1163,13 @@ export class GameUI {
               </div>
             </div>
           </div>
+
+          <section class="settings-group boss-relic-library">
+            <h3 class="setting-label">Boss Relics</h3>
+            ${BOSS_ORDER.filter((id) => progression?.bossRelics[id]?.collected).map((id) =>
+              `<button class="adv-btn" data-boss-lesson="${id}">${BOSS_RELIC_NAMES[id]}</button>`
+            ).join('') || '<p>Inspect a relic left by a defeated boss to keep its lesson here.</p>'}
+          </section>
 
           <!-- Adventurer Satchel Card -->
           <div class="satchel-card">
@@ -1314,7 +1347,7 @@ export class GameUI {
                 </div>
                 <div class="control-entry">
                   <div class="key-badges"><span class="kbd">1–6</span><span class="badge-or">/</span><span class="kbd">Q</span></div>
-                  <span class="entry-desc">Attunement Wheel (0.2× Slow-Mo)</span>
+                  <span class="entry-desc">1–6 equip a sigil directly · Q opens Sigils</span>
                 </div>
                 <div class="control-entry">
                   <div class="key-badges"><span class="kbd">Tab</span></div>
@@ -1380,11 +1413,11 @@ export class GameUI {
                 </div>
                 <div class="control-entry">
                   <div class="key-badges"><span class="touch-badge">💬 CONTEXT</span></div>
-                  <span class="entry-desc">Contextual prompt: converse with NPCs, harvest flora/ore, read guides, or rest</span>
+                  <span class="entry-desc">Contextual prompt: Talk, gather, read, rest, or inspect a boss relic</span>
                 </div>
                 <div class="control-entry">
-                  <div class="key-badges"><span class="touch-badge">⚙️ SIGIL</span></div>
-                  <span class="entry-desc">Bottom bar: open Derivative Wheel</span>
+                  <div class="key-badges"><span class="touch-badge">⚙️ SIGILS</span></div>
+                  <span class="entry-desc">Open Sigils · Equip the match under the boss health bar</span>
                 </div>
                 <div class="control-entry">
                   <div class="key-badges"><span class="touch-badge">🗺️ Radar</span></div>
@@ -1442,6 +1475,19 @@ export class GameUI {
         </div>
       </div>
     `;
+
+    this.settingsModal.querySelectorAll<HTMLButtonElement>('[data-boss-lesson]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const id = button.dataset.bossLesson as BossId;
+        const relic = progression?.bossRelics[id];
+        if (!relic) return;
+        this.settingsModal.setAttribute('inert', '');
+        this.showBossRelic(id, relic, () => {
+          this.settingsModal.removeAttribute('inert');
+          button.focus();
+        });
+      });
+    });
 
     const tabGameplay = this.settingsModal.querySelector('#tab-gameplay')!;
     const tabControls = this.settingsModal.querySelector('#tab-controls')!;
@@ -1594,9 +1640,60 @@ export class GameUI {
     }
   }
 
-  public showWorkedExample(snapshot: WorkedExampleSnapshot): void {
+  public isBossRelicOpen(): boolean {
+    return !this.relicModal.classList.contains('hidden');
+  }
+
+  public closeBossRelic(): void {
+    this.relicModal.classList.add('hidden');
+    this.relicModal.removeAttribute('inert');
+    const onClose = this.onRelicClose;
+    this.onRelicClose = undefined;
+    onClose?.();
+  }
+
+  public showBossRelic(id: BossId, relic: BossRelic, onClose: () => void, onRematch?: () => void): void {
+    const example = getRelicWorkedExample(id, relic.evidence);
+    const spell = TRIG_NAMES[example.functionId];
+    const sigil = SIGIL_NAMES[example.chosenSigil];
+    const boss = BOSS_CONFIGS[id].name;
+    const evidence = relic.evidence;
+    this.onRelicClose = onClose;
+    this.relicModal.innerHTML = `
+      <div class="adventure-modal relic-lesson" role="dialog" aria-modal="true" aria-labelledby="relic-title">
+        <h2 id="relic-title">${BOSS_RELIC_NAMES[id]}</h2>
+        <p class="relic-example-label">${evidence ? 'From your victory' : 'Practice example'}</p>
+        <ol class="relic-steps">
+          <li><strong>Read the spell.</strong> ${boss} ${evidence ? 'cast' : 'can cast'} ${spell}.</li>
+          <li><strong>Find its slope rule.</strong> ${SIGIL_BY_ID[example.chosenSigil].shortFormula} gives the slope of ${example.functionId}(θ) where the spell is defined.</li>
+          <li><strong>Cast the matching sigil.</strong> ${evidence
+            ? `Your ${sigil} cast ${evidence.brokeWard ? 'broke the ward' : 'landed a matching hit'}.`
+            : `A ${sigil} cast can break the ward while that spell is active.`}</li>
+        </ol>
+        <div class="relic-actions">
+          <button id="relic-close" class="adv-btn primary">Done</button>
+          <button id="relic-math" class="adv-btn">Show the math</button>
+          ${onRematch ? `<button id="relic-rematch" class="adv-btn">Rematch ${boss}</button>` : ''}
+        </div>
+      </div>
+    `;
+    this.relicModal.classList.remove('hidden');
+    const done = this.relicModal.querySelector<HTMLButtonElement>('#relic-close')!;
+    done.addEventListener('click', () => this.closeBossRelic());
+    done.focus();
+    this.relicModal.querySelector('#relic-math')!.addEventListener('click', () => {
+      this.relicModal.setAttribute('inert', '');
+      this.showWorkedExample(example, !evidence);
+    });
+    this.relicModal.querySelector('#relic-rematch')?.addEventListener('click', () => {
+      this.closeBossRelic();
+      onRematch?.();
+    });
+  }
+
+  public showWorkedExample(snapshot: WorkedExampleSnapshot, practice = false): void {
     this.workedModal.classList.remove('hidden');
-    const closeLabel = !this.titleOverlay.classList.contains('hidden')
+    const closeLabel = this.isBossRelicOpen() ? 'Back to Relic' : !this.titleOverlay.classList.contains('hidden')
       ? 'Return to Sanctuary Settings'
       : 'Resume Combat';
 
@@ -1616,7 +1713,7 @@ export class GameUI {
         <div class="grimoire-header">
           <div class="title-crest">✧ CELESTIAL ASTROLABE ✧</div>
           <h2 class="worked-title">THEOREM OF INSTANTANEOUS RESONANCE</h2>
-          <p class="worked-sub">Live Harmonic Wave State & Differential Slope Calculation</p>
+          <p class="worked-sub">${practice ? 'Practice example' : 'Wave and slope calculation'}</p>
         </div>
 
         <!-- Live Interactive SVG Calculus Graph -->
@@ -1686,14 +1783,14 @@ export class GameUI {
             ${snapshot.nearAsymptote ? '<div class="warn-badge">⚠ ASYMPTOTIC VOLATILITY: Wave Velocity Surge!</div>' : ''}
           </div>
 
-          <div class="grimoire-plate plate-combat ${snapshot.isExactMatch ? 'match' : 'mismatch'}">
+          ${practice ? '' : `<div class="grimoire-plate plate-combat ${snapshot.isExactMatch ? 'match' : 'mismatch'}">
             <div class="plate-label">Plate IV · Blade Attunement & Combat Resolution</div>
             <div class="plate-combat-row">
               <span class="plate-attuned">Attuned: <strong>${snapshot.chosenSigilLabel}</strong> (${snapshot.isExactMatch ? '✓ HARMONIC MATCH' : '✗ MISMATCH'})</span>
               <span class="plate-mult">Multiplier: <strong>${snapshot.damageMultiplier.toFixed(2)}×</strong></span>
             </div>
             <div class="plate-desc">${snapshot.outcomeSummary}</div>
-          </div>
+          </div>`}
         </div>
 
         <div class="modal-footer">
@@ -1701,7 +1798,9 @@ export class GameUI {
         </div>
       </div>
     `;
-    this.workedModal.querySelector('#worked-close')!.addEventListener('click', () => {
+    const close = this.workedModal.querySelector<HTMLButtonElement>('#worked-close')!;
+    close.focus();
+    close.addEventListener('click', () => {
       this.closeWorkedExample();
       this.handlers.onCloseWorkedExample();
     });
@@ -1741,24 +1840,11 @@ export class GameUI {
     this.fpsBadge.classList.toggle('hidden', !settings.showFps);
     this.fpsBadge.textContent = `${telemetry.fps.toFixed(0)} FPS · ${PRESET_PROFILES[settings.preset].label}`;
 
-    // 3. Active Sigil Medallion & 6-Pip Row
-    const sigilMeta = SIGIL_BY_ID[player.selectedSigil];
-    const medLabel = this.activeSigilPill.querySelector('#medallion-label') as HTMLElement;
-    medLabel.textContent = sigilMeta.label;
-    const medPath = this.activeSigilPill.querySelector('path') as SVGPathElement;
-    medPath.setAttribute('d', SIGIL_SVG_PATHS[player.selectedSigil]);
-    medPath.setAttribute('stroke', sigilMeta.accentHex);
-
     const isBossEngaged = !!boss && boss.phase !== 'IDLE_GUARD' && boss.phase !== 'DEFEATED';
     const recommended = settings.guidedMath && isBossEngaged ? expectedDerivativeFor(boss.activeFunction) : null;
-    for (const buttons of [this.sigilPipButtons, this.radialSigilButtons]) {
-      for (const [id, button] of buttons) {
-        const selected = id === player.selectedSigil;
-        button.classList.toggle('active', selected);
-        button.classList.toggle('sigil-recommended', id === recommended);
-        button.setAttribute('aria-pressed', String(selected));
-      }
-    }
+    this.updateSigilControls(player.selectedSigil, recommended);
+    this.guidedSigil.classList.toggle('hidden', !recommended);
+    this.equationRibbon.classList.toggle('hidden', !!recommended);
 
     // 4. Region Banner update
     this.updateRegion(landmark, isBossEngaged);
@@ -1780,10 +1866,15 @@ export class GameUI {
       this.bossStaggerFill.style.width = `${Math.max(0, Math.min(100, (boss.stagger / boss.maxStagger) * 100))}%`;
 
       if (recommended) {
-        const sigil = SIGIL_BY_ID[recommended];
-        const action = player.selectedSigil === recommended ? 'Ready to cast' : `Choose ${sigil.label}`;
-        const prompt = `<strong>${boss.activeFunction}(θ) → ${sigil.shortFormula}</strong><span> · ${action}</span>`;
-        if (this.equationRibbon.innerHTML !== prompt) this.equationRibbon.innerHTML = prompt;
+        const equipped = player.selectedSigil === recommended;
+        const name = SIGIL_NAMES[recommended];
+        const spell = `Boss spell · ${TRIG_NAMES[boss.activeFunction]}`;
+        const label = equipped ? `${name} equipped` : `Equip ${name}`;
+        const formula = `${boss.activeFunction}(θ) → ${SIGIL_BY_ID[recommended].shortFormula}`;
+        if (this.guidedBossSpell.textContent !== spell) this.guidedBossSpell.textContent = spell;
+        if (this.guidedFormula.textContent !== formula) this.guidedFormula.textContent = formula;
+        if (this.equipMatchButton.textContent !== label) this.equipMatchButton.textContent = label;
+        this.equipMatchButton.disabled = equipped;
         return;
       }
 
@@ -1807,13 +1898,30 @@ export class GameUI {
     }
   }
 
+  public updateSigilControls(selected: DerivativeSigilId, recommended: DerivativeSigilId | null): void {
+    const sigil = SIGIL_BY_ID[selected];
+    this.activeSigilPill.querySelector('#medallion-label')!.textContent = `${SIGIL_NAMES[selected]} equipped`;
+    const path = this.activeSigilPill.querySelector('path')!;
+    path.setAttribute('d', SIGIL_SVG_PATHS[selected]);
+    path.setAttribute('stroke', sigil.accentHex);
+    for (const [id, button] of this.sigilButtons) {
+      button.classList.toggle('active', id === selected);
+      button.classList.toggle('sigil-recommended', id === recommended);
+      button.setAttribute('aria-pressed', String(id === selected));
+    }
+  }
+
   public showInteractPrompt(label: string): void {
     this.interactLabel.textContent = label;
     this.interactPrompt.classList.remove('hidden');
 
     const mIcon = this.mTalkBtn?.querySelector('.m-util-icon');
     const mLabel = this.mTalkBtn?.querySelector('.m-util-label');
-    if (label.startsWith('Harvest')) {
+    this.mTalkBtn.setAttribute('aria-label', label);
+    if (label.startsWith('Inspect')) {
+      if (mIcon) mIcon.textContent = '◇';
+      if (mLabel) mLabel.textContent = 'INSPECT';
+    } else if (label.startsWith('Harvest')) {
       if (mIcon) mIcon.textContent = label.includes('Ore') ? '⛏️' : '🌸';
       if (mLabel) mLabel.textContent = 'GATHER';
     } else if (label.startsWith('Read')) {

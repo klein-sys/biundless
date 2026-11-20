@@ -78,6 +78,19 @@ function clampTrigMagnitude(raw: number): number {
   return Math.max(-MAX_CLAMPED_VALUE, Math.min(MAX_CLAMPED_VALUE, raw));
 }
 
+export const TRIG_NAMES: Record<TrigFunctionId, string> = {
+  sin: 'Sine', cos: 'Cosine', tan: 'Tangent', cot: 'Cotangent', sec: 'Secant', csc: 'Cosecant',
+};
+
+export const SIGIL_NAMES: Record<DerivativeSigilId, string> = {
+  cos: 'Cosine',
+  neg_sin: 'Negative Sine',
+  sec2: 'Secant Squared',
+  neg_csc2: 'Negative Cosecant Squared',
+  sec_tan: 'Secant × Tangent',
+  neg_csc_cot: 'Negative Cosecant × Cotangent',
+};
+
 export const DERIVATIVE_SIGILS: readonly DerivativeSigilMeta[] = [
   {
     id: 'cos',

@@ -109,6 +109,8 @@ class MockElement {
     this.classList = new MockClassList(v);
   }
 
+  focus(): void {}
+
   setAttribute(name: string, value: string): void {
     this.attributes[name] = value;
     if (name === 'class') {
@@ -394,8 +396,8 @@ describe('GameUI Title Screen Sidebar & In-Sidebar Settings Switch', () => {
       onSelectSigil: vi.fn(),
       onTogglePov: vi.fn(),
       onToggleLockOn: vi.fn(),
-      onOpenWheel: vi.fn(),
-      onCloseWheel: vi.fn(),
+      onOpenSigilPicker: vi.fn(),
+      onCloseSigilPicker: vi.fn(),
       onTouchAction: vi.fn(),
       onTouchStick: vi.fn(),
       onUpdateSettings: updateSettingsSpy,

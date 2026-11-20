@@ -38,8 +38,17 @@ import {
   evaluateExactDerivative,
   expectedDerivativeFor,
   SIGIL_BY_ID,
+  SIGIL_NAMES,
+  type DerivativeSigilId,
   type WorkedExampleSnapshot,
 } from '../math/trigDerivatives';
+import {
+  BOSS_RELIC_NAMES,
+  collectBossRelic,
+  recordBossRelic,
+  rememberRelicEvidence,
+  type RelicEvidence,
+} from '../rpg/bossRelics';
 import { GameUI, type TelemetrySnapshot } from '../ui/GameUI';
 import {
   GATHERING_NODES,
@@ -62,6 +71,7 @@ import {
 import {
   createArenaEnvironment,
   createBossModel,
+  createBossRelicModel,
   createFloraNodeModel,
   createOreNodeModel,
   createPlayerModel,
@@ -181,6 +191,9 @@ export class GameEngine {
   private readonly bossRuntimes: Record<BossId, BossRuntime>;
   private readonly bossRigs: Record<BossId, BossRig>;
   private activeBossId: BossId | null = null;
+  private readonly relicModels = new Map<BossId, THREE.Group>();
+  private attemptEvidence?: RelicEvidence;
+  private rematchBossId: BossId | null = null;
   private lastWorkedExample: WorkedExampleSnapshot | null = null;
 
   private readonly projectiles: ActiveProjectile[] = [];
@@ -190,7 +203,6 @@ export class GameEngine {
 
   private started = false;
   private paused = false;
-  private wheelSlowMo = false;
   private freezeTheta = false;
   private hitStopRemaining = 0;
   private timeScale = 1;
@@ -333,7 +345,11 @@ export class GameEngine {
       const rt = this.bossRuntimes[id];
       rig.root.position.set(rt.x, rt.y, rt.z);
       this.scene.add(rig.root);
+      const relicModel = createBossRelicModel(id);
+      this.relicModels.set(id, relicModel);
+      this.scene.add(relicModel);
     }
+    this.restoreBossesFromProgression();
 
     // Initialize Wild Gathering Nodes, Signposts & Minions
     this.minionCallbacks = {
@@ -390,24 +406,18 @@ export class GameEngine {
     }
 
     this.input = new InputManager(canvas, {
-      onSelectSigil: (sigil) => {
-        this.player.selectedSigil = sigil;
-        this.playerRig.setSigilAccent(SIGIL_BY_ID[sigil].accentHex);
-        this.audio.unlock();
-        this.ui.showToast(`ATTUNED: ${SIGIL_BY_ID[sigil].label}`);
-      },
-      onToggleWheel: (open) => {
-        this.wheelSlowMo = open;
-        this.ui.setRadialWheelVisible(open);
-      },
+      onSelectSigil: (sigil) => this.equipSigil(sigil),
+      onToggleSigils: () => this.setSigilPickerOpen(!this.ui.isSigilPickerOpen()),
+      onEquipMatch: () => this.equipMatchingSigil(),
       onToggleDev: () => {
-        if (!this.started) return;
+        if (!this.started || this.ui.isSigilPickerOpen() || this.ui.isBossRelicOpen() || this.ui.isWorkedExampleOpen()) return;
         this.paused = !this.paused;
         this.syncPauseState('dev');
       },
       onToggleMap: () => {
         if (!this.started) return;
-        if (this.isCutscenePlaying || this.dialogueRunner.isOpen) return;
+        if (this.isCutscenePlaying || this.dialogueRunner.isOpen || this.ui.isSigilPickerOpen()
+          || this.ui.isBossRelicOpen() || this.ui.isWorkedExampleOpen()) return;
         this.toggleAtlas();
       },
       onTogglePause: () => {
@@ -427,9 +437,15 @@ export class GameEngine {
         }
         if (this.ui.isWorkedExampleOpen()) {
           this.ui.closeWorkedExample();
-          this.input.setUiBlocked(!this.started);
-          this.input.setPointerLockAllowed(this.started);
-          this.paused = false;
+          if (!this.ui.isBossRelicOpen()) this.restoreGameplayInput();
+          return;
+        }
+        if (this.ui.isBossRelicOpen()) {
+          this.ui.closeBossRelic();
+          return;
+        }
+        if (this.ui.isSigilPickerOpen()) {
+          this.setSigilPickerOpen(false);
           return;
         }
         if (!this.started) {
@@ -459,6 +475,7 @@ export class GameEngine {
           applyProgressionToPlayer(this.player, computeEffectiveStats(this.progression));
           this.seenBossCutscenes.clear();
           this.warpToLandmark('hub');
+          this.restoreBossesFromProgression();
         }
         this.started = true;
         this.paused = false;
@@ -485,10 +502,8 @@ export class GameEngine {
         this.paused = false;
         this.input.setUiBlocked(true);
         this.input.setPointerLockAllowed(false);
+        this.leaveBossEncounter();
         this.clearCombatEntities();
-        this.activeBossId = null;
-        this.tangentArc.group.visible = false;
-        this.cameraCtrl.lockedOn = false;
         this.playerPos.set(0, getTerrainHeight(0, 4), 4);
         this.playerYaw = Math.PI;
         this.playerRig.root.position.copy(this.playerPos);
@@ -500,23 +515,12 @@ export class GameEngine {
       onWarpBoss: (target) => {
         this.warpToLandmark(target);
       },
-      onSelectSigil: (sigil) => {
-        this.player.selectedSigil = sigil;
-        this.playerRig.setSigilAccent(SIGIL_BY_ID[sigil].accentHex);
-        const idx = DERIVATIVE_SIGILS.findIndex((s) => s.id === sigil);
-        if (idx >= 0) this.input.setCurrentSigilIndex(idx);
-        this.audio.unlock();
-      },
+      onSelectSigil: (sigil) => this.equipSigil(sigil),
       onTogglePov: () => this.handleTogglePov(),
       onToggleLockOn: () => this.handleToggleLockOn(),
-      onOpenWheel: () => {
-        this.wheelSlowMo = true;
-        this.ui.setRadialWheelVisible(true);
-      },
-      onCloseWheel: () => {
-        this.wheelSlowMo = false;
-        this.ui.setRadialWheelVisible(false);
-      },
+      onOpenSigilPicker: () => this.setSigilPickerOpen(true),
+      onCloseSigilPicker: () => this.setSigilPickerOpen(false),
+      onEquipMatch: () => this.equipMatchingSigil(),
       onTouchAction: (action) => this.input.triggerAction(action, performance.now() / 1000),
       onTouchStick: (nx, ny) => this.input.setTouchStick(nx, ny),
       onUpdateSettings: (next) => {
@@ -548,7 +552,6 @@ export class GameEngine {
         }
       },
       onOpenWorkedExample: () => {
-        this.paused = true;
         this.input.setUiBlocked(true);
         this.input.setPointerLockAllowed(false);
         const activeBoss = this.getActiveBoss();
@@ -564,9 +567,7 @@ export class GameEngine {
         this.ui.showWorkedExample(snap);
       },
       onCloseWorkedExample: () => {
-        this.paused = false;
-        this.input.setUiBlocked(!this.started);
-        this.input.setPointerLockAllowed(this.started);
+        if (!this.ui.isBossRelicOpen()) this.restoreGameplayInput();
       },
       onOpenSettings: () => {
         if (!this.started) {
@@ -691,51 +692,170 @@ export class GameEngine {
     }
   }
 
-  private warpToLandmark(target: BossId | 'hub'): void {
-    const lm = LANDMARK_BY_ID[target];
-    const { x: targetX, z: targetZ } = target === 'hub' ? { x: 0, z: 4 } : getBossArrivalPoint(target);
-    const targetY = getTerrainHeight(targetX, targetZ);
+  private restoreGameplayInput(): void {
+    const available = this.started && !this.paused && !this.ui.isModalOpen();
+    this.input.setUiBlocked(!available);
+    this.input.setPointerLockAllowed(available);
+    this.ui.setPointerHintVisible(available && !this.isMobileUiActive() && !this.input.isPointerLocked());
+  }
 
-    this.playerPos.set(targetX, targetY, targetZ);
-    this.playerVelocityY = 0;
-    this.isGrounded = true;
-    this.playerYaw = target === 'hub' ? Math.PI : Math.atan2(lm.x - targetX, lm.z - targetZ);
+  private recommendedSigil(): DerivativeSigilId | null {
+    const boss = this.getActiveBoss();
+    if (!this.settings.guidedMath || !boss || boss.phase === 'IDLE_GUARD' || boss.phase === 'DEFEATED') return null;
+    return expectedDerivativeFor(boss.activeFunction);
+  }
 
-    this.cameraCtrl.resetSmoothing(this.playerPos, this.playerYaw);
+  private equipSigil(sigil: DerivativeSigilId): void {
+    if (!this.started || this.paused || this.isCutscenePlaying || this.dialogueRunner.isOpen) return;
+    this.player.selectedSigil = sigil;
+    this.playerRig.setSigilAccent(SIGIL_BY_ID[sigil].accentHex);
+    this.input.setCurrentSigilIndex(DERIVATIVE_SIGILS.findIndex((entry) => entry.id === sigil));
+    this.audio.unlock();
+    this.ui.updateSigilControls(sigil, this.recommendedSigil());
+    this.ui.showToast(`${SIGIL_NAMES[sigil]} equipped`);
+  }
+
+  private equipMatchingSigil(): void {
+    if (this.ui.isModalOpen()) return;
+    const sigil = this.recommendedSigil();
+    if (sigil && sigil !== this.player.selectedSigil) this.equipSigil(sigil);
+  }
+
+  private setSigilPickerOpen(open: boolean): void {
+    if (open) {
+      if (!this.started || this.paused || this.isCutscenePlaying || this.dialogueRunner.isOpen || this.ui.isModalOpen()) return;
+      this.ui.updateSigilControls(this.player.selectedSigil, this.recommendedSigil());
+      this.ui.setSigilPickerVisible(true);
+      this.input.setUiBlocked(true);
+      this.input.setPointerLockAllowed(false);
+      this.ui.setPointerHintVisible(false);
+    } else if (this.ui.isSigilPickerOpen()) {
+      this.ui.setSigilPickerVisible(false);
+      this.restoreGameplayInput();
+    }
+  }
+
+  private restoreBossesFromProgression(): void {
+    for (const id of BOSS_ORDER) {
+      const boss = this.bossRuntimes[id];
+      this.resetEncounterBoss(boss);
+      if (this.progression.bossRelics[id]) {
+        boss.phase = 'DEFEATED';
+        boss.hp = 0;
+        boss.wardActive = false;
+      }
+      this.bossRigs[id].root.visible = boss.phase !== 'DEFEATED';
+    }
+    this.syncBossRelicModels();
+  }
+
+  private resetEncounterBoss(boss: BossRuntime): void {
+    Object.assign(boss, createBossRuntime(boss.id, {
+      homeX: boss.homeX, homeY: boss.homeY, homeZ: boss.homeZ, startIdle: true,
+    }));
+    this.bossRigs[boss.id].root.position.set(boss.x, boss.y, boss.z);
+  }
+
+  private syncBossRelicModels(): void {
+    for (const [id, model] of this.relicModels) {
+      const relic = this.progression.bossRelics[id];
+      model.visible = !!relic && id !== this.rematchBossId;
+      if (relic) model.position.set(relic.x, getTerrainHeight(relic.x, relic.z), relic.z);
+    }
+  }
+
+  private nearbyBossRelic(): BossId | undefined {
+    return BOSS_ORDER.find((id) => {
+      const relic = this.progression.bossRelics[id];
+      return relic && id !== this.rematchBossId
+        && Math.hypot(relic.x - this.playerPos.x, relic.z - this.playerPos.z) <= 3.4;
+    });
+  }
+
+  private inspectBossRelic(id: BossId): void {
+    const relic = this.progression.bossRelics[id];
+    if (!relic) return;
+    if (collectBossRelic(this.progression.bossRelics, id)) saveProgression(this.progression);
+    this.input.setUiBlocked(true);
+    this.input.setPointerLockAllowed(false);
+    this.ui.setPointerHintVisible(false);
+    this.ui.showBossRelic(id, relic, () => this.restoreGameplayInput(), () => this.warpToLandmark(id, true));
+  }
+
+  private leaveBossEncounter(): void {
+    const boss = this.getActiveBoss();
+    if (boss && boss.phase !== 'DEFEATED') {
+      resetBossToIdle(boss);
+      if (this.rematchBossId === boss.id) {
+        boss.phase = 'DEFEATED';
+        boss.hp = 0;
+        boss.wardActive = false;
+        this.bossRigs[boss.id].root.visible = false;
+      }
+    }
+    this.activeBossId = null;
+    for (const projectile of this.projectiles) {
+      if (!projectile.fromPlayer) projectile.life = 0;
+    }
+    for (const wave of this.shockwaves) wave.life = wave.maxLife;
+    this.attemptEvidence = undefined;
+    this.tangentArc.group.visible = false;
+    this.cameraCtrl.lockedOn = false;
+    if (this.rematchBossId) {
+      this.rematchBossId = null;
+      this.syncBossRelicModels();
+    }
+  }
+
+  private warpToLandmark(target: BossId | 'hub', rematch = false): void {
+    if (this.isCutscenePlaying) this.endBossCutscene();
+    this.leaveBossEncounter();
     this.clearCombatEntities();
 
+    const landmark = LANDMARK_BY_ID[target];
+    const relic = target === 'hub' ? undefined : this.progression.bossRelics[target];
+    const visitRelic = relic && !rematch;
+    const arrival = target === 'hub' ? { x: 0, z: 4 } : getBossArrivalPoint(target);
+    const distanceToCenter = relic ? Math.hypot(relic.x, relic.z) : 0;
+    const scale = distanceToCenter > 2.8 ? 1 - 2.8 / distanceToCenter : 1;
+    const targetX = visitRelic ? relic.x * scale : arrival.x;
+    const targetZ = visitRelic ? relic.z * scale : arrival.z;
+
+    this.playerPos.set(targetX, getTerrainHeight(targetX, targetZ), targetZ);
+    this.playerVelocityY = 0;
+    this.isGrounded = true;
+    this.playerYaw = target === 'hub' ? Math.PI : Math.atan2(
+      (visitRelic ? relic.x : landmark.x) - targetX,
+      (visitRelic ? relic.z : landmark.z) - targetZ,
+    );
+    this.cameraCtrl.resetSmoothing(this.playerPos, this.playerYaw);
+
     if (target === 'hub') {
-      if (this.isCutscenePlaying) {
-        this.endBossCutscene();
-      }
-      this.activeBossId = null;
-      this.tangentArc.group.visible = false;
-      this.cameraCtrl.lockedOn = false;
       this.restSanctuary();
       this.ui.showToast("WARPED: ADVENTURER'S PLAZA");
+      return;
+    }
+    if (visitRelic) {
+      this.ui.showToast(`Inspect ${BOSS_RELIC_NAMES[target]}`);
+      return;
+    }
+
+    this.activeBossId = target;
+    const boss = this.bossRuntimes[target];
+    if (rematch && relic) {
+      this.resetEncounterBoss(boss);
+      this.bossRigs[target].root.visible = true;
+      this.rematchBossId = target;
+      this.syncBossRelicModels();
+    }
+    if (!this.seenBossCutscenes.has(target)) {
+      this.triggerBossCutscene(target);
     } else {
-      this.activeBossId = target;
-      const boss = this.bossRuntimes[target];
-      if (boss.phase === 'DEFEATED') {
-        // Respawn boss cleanly when explicitly warped to from Waypoint menu
-        const fresh = createBossRuntime(target, {
-          homeX: lm.x,
-          homeY: lm.baseHeight,
-          homeZ: lm.z,
-          startIdle: false,
-        });
-        Object.assign(boss, fresh);
-        this.bossRigs[target].root.scale.setScalar(1);
-      }
+      engageBoss(boss);
       this.audio.playBossCue();
-      if (!this.seenBossCutscenes.has(target)) {
-        this.triggerBossCutscene(target);
-      } else {
-        engageBoss(boss);
-        this.tangentArc.group.visible = true;
-        this.cameraCtrl.lockedOn = true;
-        this.ui.showToast(`WARPED: ${lm.name.toUpperCase()}`);
-      }
+      this.tangentArc.group.visible = true;
+      this.cameraCtrl.lockedOn = true;
+      this.ui.showToast(`WARPED: ${landmark.name.toUpperCase()}`);
     }
   }
 
@@ -945,8 +1065,6 @@ export class GameEngine {
     if (this.hitStopRemaining > 0) {
       this.hitStopRemaining = Math.max(0, this.hitStopRemaining - realDt);
       this.timeScale = 0.06;
-    } else if (this.wheelSlowMo) {
-      this.timeScale = 0.2;
     } else {
       this.timeScale = 1.0;
     }
@@ -972,6 +1090,7 @@ export class GameEngine {
     }
     if (this.input.buffer.consume('interact', nowSec)) {
       this.handleInteract();
+      if (this.ui.isBossRelicOpen()) return;
     }
 
     if (isDialogueActive) {
@@ -1172,7 +1291,10 @@ export class GameEngine {
     const nearFountain = distToFountain <= 3.4 && !this.nearbyNpc && !this.nearbyGatherNode && !this.nearbySignpost;
 
     if (!this.dialogueRunner.isOpen) {
-      if (this.nearbyNpc) {
+      const relic = this.nearbyBossRelic();
+      if (relic) {
+        this.ui.showInteractPrompt(`Inspect ${BOSS_RELIC_NAMES[relic]}`);
+      } else if (this.nearbyNpc) {
         this.ui.showInteractPrompt(`Talk to ${this.nearbyNpc.name}`);
       } else if (this.nearbyGatherNode) {
         this.ui.showInteractPrompt(`Harvest ${this.nearbyGatherNode.def.name}`);
@@ -1226,18 +1348,7 @@ export class GameEngine {
       const boss = this.bossRuntimes[id];
       const bossRig = this.bossRigs[id];
 
-      if (boss.phase === 'DEFEATED') {
-        if (this.activeBossId === id) {
-          this.activeBossId = null;
-          this.tangentArc.group.visible = false;
-          this.cameraCtrl.lockedOn = false;
-          this.vfx.spawnBurst(new THREE.Vector3(boss.x, boss.y + 1.8, boss.z), 0xffe49c, 32, 9.0, 0.65);
-          this.audio.playWardShatter(true);
-          this.ui.showToast(`${BOSS_CONFIGS[id].name.toUpperCase()} VANQUISHED!`);
-        }
-        bossRig.root.scale.setScalar(0.01);
-        continue;
-      }
+      if (boss.phase === 'DEFEATED') continue;
 
       const events = stepBossAI(
         boss,
@@ -1366,6 +1477,7 @@ export class GameEngine {
 
     if (closestBossId && closestDist <= BOSS_CONFIGS[closestBossId].territoryRadius) {
       if (this.activeBossId !== closestBossId) {
+        this.leaveBossEncounter();
         if (!this.seenBossCutscenes.has(closestBossId)) {
           this.triggerBossCutscene(closestBossId);
         } else {
@@ -1380,10 +1492,7 @@ export class GameEngine {
       const current = this.bossRuntimes[this.activeBossId];
       const d = Math.hypot(this.playerPos.x - current.homeX, this.playerPos.z - current.homeZ);
       if (d > BOSS_CONFIGS[this.activeBossId].territoryRadius + 6) {
-        resetBossToIdle(current);
-        this.activeBossId = null;
-        this.tangentArc.group.visible = false;
-        this.cameraCtrl.lockedOn = false;
+        this.leaveBossEncounter();
         this.ui.showToast('LEAVING BOSS TERRITORY');
       }
     }
@@ -1438,12 +1547,6 @@ export class GameEngine {
     });
     this.lastWorkedExample = res.workedExample;
     applyDamageToBoss(activeBoss, res.damage, res.staggerGain, false);
-    if (activeBoss.hp <= 0 || (activeBoss.phase as string) === 'DEFEATED') {
-      recordBossDefeat(this.progression, activeBoss.id, 250);
-      applyProgressionToPlayer(this.player, computeEffectiveStats(this.progression));
-      saveProgression(this.progression);
-      this.ui.showToast(`BOSS DEFEATED! +250 XP · ASTRAL LEVEL ${this.progression.level}`);
-    }
     this.vfx.spawnBurst(
       new THREE.Vector3(activeBoss.x, activeBoss.y + 1.6, activeBoss.z),
       0xf5d48a,
@@ -1452,7 +1555,8 @@ export class GameEngine {
       0.38,
     );
     this.cameraCtrl.addTrauma(0.2);
-    this.ui.showToast(`STRIKE: ${res.damage}`);
+    if (activeBoss.hp <= 0) this.finishBossVictory(activeBoss);
+    else this.ui.showToast(`STRIKE: ${res.damage}`);
   }
 
   private performResonanceCast(): void {
@@ -1528,19 +1632,14 @@ export class GameEngine {
 
     this.lastWorkedExample = res.workedExample;
     applyDamageToBoss(boss, res.damage, res.staggerGain, res.wardShattered);
-    if (boss.hp <= 0 || (boss.phase as string) === 'DEFEATED') {
-      recordBossDefeat(this.progression, boss.id, 250);
-      applyProgressionToPlayer(this.player, computeEffectiveStats(this.progression));
-      saveProgression(this.progression);
-      this.ui.showToast(`BOSS DEFEATED! +250 XP · ASTRAL LEVEL ${this.progression.level}`);
-    }
+    this.attemptEvidence = rememberRelicEvidence(this.attemptEvidence, res.workedExample, res.wardShattered);
     const hitOrigin = new THREE.Vector3(boss.x, boss.y + 1.8, boss.z);
     const sigilHex = new THREE.Color(SIGIL_BY_ID[cast.sigil].accentHex).getHex();
 
     if (res.outcomeKind === 'guided_mismatch') {
       const rule = res.workedExample.functionId;
-      const needed = SIGIL_BY_ID[expectedDerivativeFor(rule)].label;
-      this.ui.showToast(`For ${rule}(θ), choose ${needed}`);
+      const needed = SIGIL_NAMES[expectedDerivativeFor(rule)];
+      this.ui.showToast(`That spell needed ${needed}`);
     } else if (res.triggerBacklash) {
       this.audio.playBacklash();
       this.cameraCtrl.addTrauma(0.45);
@@ -1565,6 +1664,21 @@ export class GameEngine {
       this.vfx.spawnBurst(hitOrigin, sigilHex, 15, 6.0, 0.44);
       this.ui.showToast(`RESONANCE HIT! ${res.multiplier}× (${res.damage})`);
     }
+    if (boss.hp <= 0) this.finishBossVictory(boss);
+  }
+
+  private finishBossVictory(boss: BossRuntime): void {
+    recordBossRelic(this.progression.bossRelics, boss.id, boss, this.attemptEvidence);
+    recordBossDefeat(this.progression, boss.id, 250);
+    applyProgressionToPlayer(this.player, computeEffectiveStats(this.progression));
+    saveProgression(this.progression);
+    this.bossRigs[boss.id].root.visible = false;
+    this.leaveBossEncounter();
+    this.syncBossRelicModels();
+
+    this.vfx.spawnBurst(new THREE.Vector3(boss.x, boss.y + 1.8, boss.z), 0xffe49c, 32, 9.0, 0.65);
+    this.audio.playWardShatter(true);
+    this.ui.showToast(`Victory · +250 XP · Inspect ${BOSS_RELIC_NAMES[boss.id]}`, 6000);
   }
 
   private resolvePlayerProjectileHitMinion(minion: MinionRuntime, cast: ResonanceCast): void {
@@ -1676,6 +1790,13 @@ export class GameEngine {
       return;
     }
 
+    if (!this.started || this.isCutscenePlaying || this.ui.isModalOpen()) return;
+    const relic = this.nearbyBossRelic();
+    if (relic) {
+      this.inspectBossRelic(relic);
+      return;
+    }
+
     if (this.nearbyNpc) {
       const node = this.dialogueRunner.startDialogue(this.nearbyNpc.role);
       if (!node) return;
@@ -1782,7 +1903,7 @@ export class GameEngine {
       let hit = false;
       if (p.fromPlayer) {
         hit = this.stepResonanceProjectile(p, Math.min(dt, p.life));
-      } else {
+      } else if (p.life > 0) {
         p.mesh.position.addScaledVector(p.velocity, dt);
         const d = Math.hypot(p.mesh.position.x - this.playerPos.x, p.mesh.position.z - this.playerPos.z);
         if (d < 1.1) {
@@ -1794,7 +1915,7 @@ export class GameEngine {
       p.life -= dt;
       p.mesh.rotation.y += dt * 6;
 
-      if (Math.random() < 0.4) {
+      if (p.life > 0 && Math.random() < 0.4) {
         const col = (p.mesh.material as THREE.MeshBasicMaterial).color.getHex();
         this.vfx.spawnTrail(p.mesh.position, col, p.fromPlayer ? 0.34 : 0.28);
       }
@@ -1815,7 +1936,7 @@ export class GameEngine {
       sw.mesh.scale.setScalar(radius);
       (sw.mesh.material as THREE.MeshBasicMaterial).opacity = (1 - t) * 0.85;
 
-      if (!sw.hitPlayer) {
+      if (!sw.hitPlayer && sw.life < sw.maxLife) {
         const dist = Math.hypot(sw.mesh.position.x - this.playerPos.x, sw.mesh.position.z - this.playerPos.z);
         if (Math.abs(dist - radius) < 1.1) {
           sw.hitPlayer = true;

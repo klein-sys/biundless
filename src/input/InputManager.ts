@@ -3,7 +3,8 @@ import { ActionBuffer, applyRadialDeadzone, type GameAction } from './inputMath'
 
 export interface InputCallbacks {
   onSelectSigil: (sigil: DerivativeSigilId) => void;
-  onToggleWheel: (open: boolean) => void;
+  onToggleSigils: () => void;
+  onEquipMatch: () => void;
   onToggleDev: () => void;
   onTogglePause: () => void;
   onToggleMap?: () => void;
@@ -28,7 +29,6 @@ export class InputManager {
   private lookTouchId: number | null = null;
   private lastLookTouchX = 0;
   private lastLookTouchY = 0;
-  private wheelKeyHeld = false;
   private readonly canvas: HTMLCanvasElement;
   private uiBlocked = false;
   private pointerLockAllowed = true;
@@ -82,6 +82,7 @@ export class InputManager {
     this.uiBlocked = blocked;
     if (blocked) {
       this.keys.clear();
+      this.buffer.clear();
       this.touchMoveX = 0;
       this.touchMoveY = 0;
       this.isDraggingMouse = false;
@@ -99,12 +100,14 @@ export class InputManager {
   }
 
   public setTouchStick(normX: number, normY: number): void {
+    if (this.uiBlocked) return;
     const stick = applyRadialDeadzone(normX, normY, 0.16, 1.15);
     this.touchMoveX = stick.x;
     this.touchMoveY = stick.y;
   }
 
   public triggerAction(action: GameAction, nowSec: number): void {
+    if (this.uiBlocked) return;
     this.callbacks.onFirstUserGesture();
     this.buffer.press(action, nowSec);
   }
@@ -159,6 +162,11 @@ export class InputManager {
         this.callbacks.onTogglePause();
         return;
       }
+      if (e.code === 'KeyQ' && !e.repeat) {
+        e.preventDefault();
+        this.callbacks.onToggleSigils();
+        return;
+      }
       if (this.uiBlocked) return;
 
       this.keys.add(e.code);
@@ -181,9 +189,8 @@ export class InputManager {
         } else if (e.code === 'Tab') {
           e.preventDefault();
           this.buffer.press('lockOn', this.nowSec());
-        } else if (e.code === 'KeyQ') {
-          this.wheelKeyHeld = true;
-          this.callbacks.onToggleWheel(true);
+        } else if (e.code === 'KeyG') {
+          this.callbacks.onEquipMatch();
         } else if (e.code.startsWith('Digit')) {
           const idx = Number(e.code.replace('Digit', '')) - 1;
           if (idx >= 0 && idx < DERIVATIVE_SIGILS.length) {
@@ -196,10 +203,6 @@ export class InputManager {
 
     window.addEventListener('keyup', (e) => {
       this.keys.delete(e.code);
-      if (e.code === 'KeyQ' && this.wheelKeyHeld) {
-        this.wheelKeyHeld = false;
-        this.callbacks.onToggleWheel(false);
-      }
     });
 
     document.addEventListener('pointerlockchange', () => {
