@@ -253,14 +253,18 @@ const CALCULATOR_RULES: Partial<Record<TrigFunctionId, string>> = {
   csc: '−cos(θ) / sin²(θ)',
 };
 
+export function formatDerivativeExpression(fn: TrigFunctionId, argument: string): string {
+  return TRIG_DEFINITIONS[fn].derivativeRule.split(' = ')[1]
+    .replace('-', '−').replace('·', ' · ').replaceAll('θ', argument);
+}
+
 export function getDerivativeSolution(fn: TrigFunctionId, theta: number) {
   const def = TRIG_DEFINITIONS[fn];
   const nearPole = computeAsymptoteState(def.asymptoteDenominator, theta).nearAsymptote;
   const angle = nearPole ? theta.toString() : Number(theta.toFixed(6)).toString();
-  const derivative = def.derivativeRule.split(' = ')[1].replace('-', '−').replace('·', ' · ');
   return {
     angle,
-    substitution: derivative.replaceAll('θ', angle),
+    substitution: formatDerivativeExpression(fn, angle),
     calculatorSubstitution: CALCULATOR_RULES[fn]?.replaceAll('θ', angle),
     slope: isUndefinedAt(def, theta) ? null : def.evaluateDerivative(theta, false),
     denominator: def.asymptoteDenominator,

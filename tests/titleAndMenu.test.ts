@@ -676,19 +676,40 @@ describe('GameUI Title Screen Sidebar & In-Sidebar Settings Switch', () => {
     ui.showWorkedExample(buildWorkedExample('sin', Math.PI / 3, 'cos', 'ward_shattered', 3.6));
 
     const worked = root.querySelector('#worked-modal')!;
-    expect(worked.querySelector('.solution-steps')!.textContent).toContain('f′(θ₀) ≈ cos(1.047198) ≈ 0.500');
-    expect(worked.querySelector('.solution-steps')!.textContent).toContain('Equip Cosine');
-    expect(worked.querySelector('.solution-outcome')!.textContent).toContain('3.60× damage');
+    const fight = worked.querySelector('#worked-fight')!;
+    expect(fight.classList.contains('hidden')).toBe(true);
+    worked.querySelector('#worked-fight-view')!.click();
+    expect(fight.classList.contains('hidden')).toBe(false);
+    expect(fight.querySelector('.solution-steps')!.textContent).toContain('f′(θ₀) ≈ cos(1.047198) ≈ 0.500');
+    expect(fight.querySelector('.solution-steps')!.textContent).toContain('Equip Cosine');
+    expect(fight.querySelector('.solution-outcome')!.textContent).toContain('3.60× damage');
+    worked.querySelector('#worked-practice-view')!.click();
+    expect(fight.classList.contains('hidden')).toBe(true);
   });
 
-  it('displays undefined at an asymptote and gives a practice example no combat result', () => {
+  it('keeps an undefined combat slope in the fight view and starts with usable practice numbers', () => {
     const ui = new GameUI(root as any, handlers, DEFAULT_SETTINGS);
-    ui.showWorkedExample(buildWorkedExample('tan', Math.PI / 2, 'sec2', 'resonance_hit', 1), true);
+    ui.showWorkedExample(buildWorkedExample('tan', Math.PI / 2, 'sec2', 'resonance_hit', 1));
 
     const worked = root.querySelector('#worked-modal')!;
-    expect(worked.querySelector('.solution-steps')!.textContent).toContain('cos(θ₀) = 0, so f′(θ₀) is undefined');
-    expect(worked.querySelector('.solution-tangent')).toBeNull();
-    expect(worked.querySelector('.solution-outcome')).toBeNull();
+    expect(worked.querySelector('#worked-practice')!.textContent).toContain('Slope = 2 × 4 = 8');
+    worked.querySelector('#worked-fight-view')!.click();
+    const fight = worked.querySelector('#worked-fight')!;
+    expect(fight.querySelector('.solution-steps')!.textContent).toContain('cos(θ₀) = 0, so f′(θ₀) is undefined');
+    expect(fight.querySelector('.solution-tangent')).toBeNull();
+  });
+
+  it('lets a practice-only lesson switch to a different numerical example', () => {
+    const ui = new GameUI(root as any, handlers, DEFAULT_SETTINGS);
+    ui.showWorkedExample(buildWorkedExample('sin', Math.PI / 3, 'cos', 'resonance_hit', 1), true);
+
+    const worked = root.querySelector('#worked-modal')!;
+    const picker = worked.querySelector('#practice-example')!;
+    picker.value = 'tan';
+    picker.trigger('change');
+    expect(worked.querySelector('#practice-work')!.textContent).toContain('y′ = 2 × sec²(2x)');
+    expect(worked.querySelector('#practice-work')!.textContent).toContain('Slope = 2 × 4 = 8');
+    expect(worked.querySelector('#worked-fight')).toBeNull();
   });
 
   it('syncSettings updates currentSettings and re-renders active pills in title settings view', () => {

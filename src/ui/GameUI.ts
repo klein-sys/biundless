@@ -25,8 +25,10 @@ import {
   SIGIL_NAMES,
   TRIG_NAMES,
   type DerivativeSigilId,
+  type TrigFunctionId,
   type WorkedExampleSnapshot,
 } from '../math/trigDerivatives';
+import { getTrigPracticeExample } from '../math/trigPractice';
 import { BIOME_LANDMARKS, getBrookCenterZ, TOWN_GATES, VALLEY_ROADS, type BiomeLandmark } from '../world/SunlitValley';
 import type { DialogueChoice, DialogueNode } from '../dialogue/dialogueData';
 import {
@@ -823,7 +825,7 @@ export class GameUI {
             <div class="settings-group sidebar-math-group">
               <label class="setting-label">Calculus Presentation</label>
               <button id="sidebar-btn-worked" class="adv-btn primary" style="width:100%;">
-                Open MATH 101 Worked Example
+                Practice Derivatives
               </button>
             </div>
           </div>
@@ -1446,7 +1448,7 @@ export class GameUI {
         <div id="tab-body-dev" class="tab-body ${activeTab === 'dev' ? '' : 'hidden'}">
           <div class="settings-group">
             <label class="setting-label">Class Presentation Overlay</label>
-            <button id="dev-worked" class="adv-btn primary" style="width:100%;">Open MATH 101 Worked Example</button>
+            <button id="dev-worked" class="adv-btn primary" style="width:100%;">Practice Derivatives</button>
           </div>
 
           <div class="settings-group">
@@ -1699,8 +1701,132 @@ export class GameUI {
     const fromMenu = !this.settingsModal.classList.contains('hidden');
     const closeLabel = fromRelic ? 'Back to Relic' : fromTitle ? 'Return to Sanctuary Settings'
       : fromMenu ? 'Back to Sanctuary Menu' : 'Resume Combat';
-
     const fn = snapshot.functionId ?? 'sin';
+
+    if (fromRelic) this.relicModal.setAttribute('inert', '');
+    else if (fromTitle) this.titleOverlay.setAttribute('inert', '');
+    else if (fromMenu) this.settingsModal.setAttribute('inert', '');
+    this.workedModal.classList.remove('hidden');
+    this.workedModal.innerHTML = `
+      <div class="adventure-modal astrolabe-grimoire" role="dialog" aria-modal="true" aria-labelledby="worked-title">
+        <header class="grimoire-header">
+          <h2 id="worked-title">Derivative Solution</h2>
+          ${practice ? '' : `
+            <div class="solution-views" role="group" aria-label="Lesson view">
+              <button type="button" id="worked-practice-view" class="pill-btn active" aria-pressed="true" aria-controls="worked-practice">Practice with numbers</button>
+              <button type="button" id="worked-fight-view" class="pill-btn" aria-pressed="false" aria-controls="worked-fight">From your fight</button>
+            </div>
+          `}
+        </header>
+
+        <section id="worked-practice">
+          <div class="practice-picker">
+            <label for="practice-example">Choose an example</label>
+            <select id="practice-example">
+              ${DERIVATIVE_SIGILS.map(({ sourceFunction }) => `
+                <option value="${sourceFunction}" ${sourceFunction === fn ? 'selected' : ''}>
+                  ${getTrigPracticeExample(sourceFunction).problem}
+                </option>
+              `).join('')}
+            </select>
+          </div>
+          <div id="practice-work">${this.renderTrigPractice(fn)}</div>
+        </section>
+
+        ${practice ? '' : `
+          <section id="worked-fight" class="hidden" aria-label="From your fight">
+            ${this.renderFightSolution(snapshot, fn)}
+          </section>
+        `}
+
+        <div class="modal-footer">
+          <button id="worked-close" class="adv-btn primary">${closeLabel}</button>
+        </div>
+      </div>
+    `;
+
+    const dialog = this.workedModal.querySelector<HTMLElement>('.astrolabe-grimoire')!;
+    const picker = dialog.querySelector<HTMLSelectElement>('#practice-example')!;
+    const work = dialog.querySelector<HTMLElement>('#practice-work')!;
+    picker.addEventListener('change', () => {
+      work.innerHTML = this.renderTrigPractice(picker.value as TrigFunctionId);
+    });
+
+    if (!practice) {
+      const practiceView = dialog.querySelector<HTMLButtonElement>('#worked-practice-view')!;
+      const fightView = dialog.querySelector<HTMLButtonElement>('#worked-fight-view')!;
+      const practicePanel = dialog.querySelector('#worked-practice')!;
+      const fightPanel = dialog.querySelector('#worked-fight')!;
+      const showFight = (show: boolean) => {
+        practicePanel.classList.toggle('hidden', show);
+        fightPanel.classList.toggle('hidden', !show);
+        practiceView.classList.toggle('active', !show);
+        fightView.classList.toggle('active', show);
+        practiceView.setAttribute('aria-pressed', String(!show));
+        fightView.setAttribute('aria-pressed', String(show));
+      };
+      practiceView.addEventListener('click', () => showFight(false));
+      fightView.addEventListener('click', () => showFight(true));
+    }
+
+    const close = dialog.querySelector<HTMLButtonElement>('#worked-close')!;
+    const firstControl = dialog.querySelector<HTMLButtonElement>('#worked-practice-view') ?? picker;
+    firstControl.focus({ preventScroll: true });
+    dialog.addEventListener('keydown', (event) => {
+      if (event.key !== 'Tab') return;
+      if (event.shiftKey && document.activeElement === firstControl) {
+        event.preventDefault();
+        close.focus();
+      } else if (!event.shiftKey && document.activeElement === close) {
+        event.preventDefault();
+        firstControl.focus();
+      }
+    });
+    close.addEventListener('click', () => {
+      this.closeWorkedExample();
+      this.handlers.onCloseWorkedExample();
+    });
+  }
+
+  private renderTrigPractice(fn: TrigFunctionId): string {
+    const example = getTrigPracticeExample(fn);
+    const sigil = SIGIL_NAMES[expectedDerivativeFor(fn)];
+    const ramp = example.slope > 0 ? 'rising' : 'falling';
+    return `
+      <div class="practice-problem">
+        <strong>${example.problem}</strong>
+        <span>Find the slope at <b>x = ${example.input}</b> radians (${example.inputDegrees}°).</span>
+      </div>
+      <ol class="solution-steps">
+        <li>
+          <h3>Find the inside</h3>
+          <p class="solution-formula">u = ${example.inside} &nbsp; ⇒ &nbsp; du/dx = ${example.factor}</p>
+          <p>The number multiplying x becomes the inside derivative.</p>
+        </li>
+        <li>
+          <h3>Apply the outside rule</h3>
+          <p class="solution-formula">${example.outsideRule}</p>
+        </li>
+        <li>
+          <h3>Multiply the two derivatives</h3>
+          <p>Chain rule · outside derivative × inside derivative. Put ${example.inside} back in for u.</p>
+          <p class="solution-formula">${example.derivative}</p>
+        </li>
+        <li>
+          <h3>Plug in the number</h3>
+          <p class="solution-formula">
+            u = ${example.factor} × (${example.input}) = ${example.evaluatedInside} (${example.evaluatedInsideDegrees}°)
+            ${example.evaluation.map((line) => `<br/>${line}`).join('')}
+          </p>
+          <p class="solution-formula practice-answer">Slope = ${example.answer}</p>
+          <p>The curve is ${ramp} at this point.</p>
+        </li>
+      </ol>
+      <p class="practice-sigil"><strong>In the game</strong> · The outside rule points to the ${sigil} sigil. The extra ×${example.factor} comes from the ${example.inside} inside this practice problem.</p>
+    `;
+  }
+
+  private renderFightSolution(snapshot: WorkedExampleSnapshot, fn: TrigFunctionId): string {
     const theta = snapshot.thetaRadians ?? Math.PI / 3;
     const solution = getDerivativeSolution(fn, theta);
     const plot = generateWavePlotData(fn, theta);
@@ -1713,17 +1839,7 @@ export class GameUI {
       : slope > 0 ? 'The wave is rising here.' : 'The wave is falling here.';
     const sigil = SIGIL_NAMES[expectedDerivativeFor(fn)];
 
-    if (fromRelic) this.relicModal.setAttribute('inert', '');
-    else if (fromTitle) this.titleOverlay.setAttribute('inert', '');
-    else if (fromMenu) this.settingsModal.setAttribute('inert', '');
-    this.workedModal.classList.remove('hidden');
-    this.workedModal.innerHTML = `
-      <div class="adventure-modal astrolabe-grimoire" role="dialog" aria-modal="true" aria-labelledby="worked-title">
-        <header class="grimoire-header">
-          <h2 id="worked-title">Derivative Solution</h2>
-          <p>${practice ? 'Practice example' : fromRelic ? 'From your victory' : 'From your latest strike'} · ${TRIG_NAMES[fn]} wave</p>
-        </header>
-
+    return `
         <div class="solution-layout">
           <ol class="solution-steps">
             <li>
@@ -1782,34 +1898,18 @@ export class GameUI {
                 : slope === null ? 'There is no tangent at the asymptote.' : 'The point at θ₀ lies beyond this graph’s vertical range.'}</figcaption>
             </figure>
 
-            ${practice ? '' : `
-              <section class="solution-outcome">
-                <h3>Combat result</h3>
-                <div class="solution-outcome-summary">
-                  <strong>${snapshot.outcomeKind === 'basic_chip' ? 'Sword strike'
-                    : `${snapshot.chosenSigilLabel} · ${snapshot.isExactMatch ? 'Matched' : 'Mismatched'}`}</strong>
-                  <span>${snapshot.damageMultiplier.toFixed(2)}× damage</span>
-                </div>
-                <p>${snapshot.outcomeSummary}</p>
-              </section>
-            `}
+            <section class="solution-outcome">
+              <h3>Combat result</h3>
+              <div class="solution-outcome-summary">
+                <strong>${snapshot.outcomeKind === 'basic_chip' ? 'Sword strike'
+                  : `${snapshot.chosenSigilLabel} · ${snapshot.isExactMatch ? 'Matched' : 'Mismatched'}`}</strong>
+                <span>${snapshot.damageMultiplier.toFixed(2)}× damage</span>
+              </div>
+              <p>${snapshot.outcomeSummary}</p>
+            </section>
           </div>
         </div>
-
-        <div class="modal-footer">
-          <button id="worked-close" class="adv-btn primary">${closeLabel}</button>
-        </div>
-      </div>
     `;
-    const close = this.workedModal.querySelector<HTMLButtonElement>('#worked-close')!;
-    close.focus({ preventScroll: true });
-    close.addEventListener('keydown', (event) => {
-      if (event.key === 'Tab') event.preventDefault();
-    });
-    close.addEventListener('click', () => {
-      this.closeWorkedExample();
-      this.handlers.onCloseWorkedExample();
-    });
   }
 
   public updateHUD(

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { getTrigPracticeExample } from '../src/math/trigPractice';
 import {
   TRIG_DEFINITIONS,
   buildWorkedExample,
@@ -96,6 +97,25 @@ describe('trigDerivatives seam', () => {
     const solution = getDerivativeSolution('sec', 0.8);
     expect(solution.substitution).toBe('sec(0.8) · tan(0.8)');
     expect(solution.calculatorSubstitution).toBe('sin(0.8) / cos²(0.8)');
+  });
+});
+
+describe('chain rule practice', () => {
+  it('works through the coefficient and a nonzero input in the tangent example', () => {
+    const example = getTrigPracticeExample('tan');
+    expect(example.problem).toBe('y = tan(2x)');
+    expect(example.inside).toBe('2x');
+    expect(example.factor).toBe(2);
+    expect(example.derivative).toBe('y′ = 2 × sec²(2x)');
+    expect(example.input).toBe('π/6');
+    expect(example.evaluatedInside).toBe('π/3');
+    expect(example.answer).toBe('2 × 4 = 8');
+  });
+
+  it.each([
+    ['sin', 1.5], ['cos', -4], ['tan', 8], ['cot', -8], ['sec', 2.828], ['csc', -2.828],
+  ] as const)('ends the %s example with a nonzero slope', (fn, expected) => {
+    expect(getTrigPracticeExample(fn).slope).toBe(expected);
   });
 });
 
