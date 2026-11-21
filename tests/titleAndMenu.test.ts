@@ -712,6 +712,28 @@ describe('GameUI Title Screen Sidebar & In-Sidebar Settings Switch', () => {
     expect(worked.querySelector('#worked-fight')).toBeNull();
   });
 
+  it('allows a retry or guidance and completes the restoration only after confirmation', () => {
+    const ui = new GameUI(root as any, handlers, DEFAULT_SETTINGS);
+    const submit = vi.fn(() => true);
+    const close = vi.fn();
+    ui.showRestoration(submit, close);
+    const confirm = root.querySelector('#restoration-confirm')!;
+
+    root.querySelector('[data-restoration-sigil="neg_sin"]')!.click();
+    confirm.click();
+    expect(submit).not.toHaveBeenCalled();
+    expect(root.querySelector('#restoration-feedback')!.textContent).toContain('Try again');
+
+    root.querySelector('#restoration-guide')!.click();
+    expect(root.querySelector('[data-restoration-sigil="cos"]')!.getAttribute('aria-pressed')).toBe('true');
+    expect(root.querySelector('#restoration-feedback')!.textContent).toContain('cos(π/3) = 1/2');
+    expect(submit).not.toHaveBeenCalled();
+    confirm.click();
+    expect(submit).toHaveBeenCalledWith('cos');
+    expect(ui.isRestorationOpen()).toBe(false);
+    expect(close).toHaveBeenCalledOnce();
+  });
+
   it('syncSettings updates currentSettings and re-renders active pills in title settings view', () => {
     const ui = new GameUI(root as any, handlers, DEFAULT_SETTINGS);
     ui.openTitleSettings();

@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { applyProgressionToPlayer, computeEffectiveStat, createInitialPlayerState } from '../src/combat/resonanceCombat';
+import { collectBossRelic, recordBossRelic } from '../src/rpg/bossRelics';
+import { getCampaignObjective, restoreAstrolabe } from '../src/rpg/campaign';
 import {
   createDefaultProgression,
   getXpForNextLevel,
@@ -36,6 +38,64 @@ if (typeof globalThis.localStorage === 'undefined') {
 describe('RPG Progression System', () => {
   beforeEach(() => {
     localStorage.clear();
+  });
+
+  it('recommends Vespera after the briefing and counts relics only when inspected', () => {
+    const state = createDefaultProgression();
+    expect(getCampaignObjective(state).next).toBe('Talk to Aurelius at the Astrolabe gazebo');
+    expect(getCampaignObjective(state, true).next).toContain('Vespera');
+    recordBossRelic(state.bossRelics, 'lich', { x: 1, z: 1 });
+    expect(getCampaignObjective(state)).toMatchObject({ recovered: 0, next: 'Inspect Malakor’s Seal' });
+    collectBossRelic(state.bossRelics, 'lich');
+    expect(getCampaignObjective(state).recovered).toBe(1);
+  });
+
+  it('restores only once, with every relic and the right sigil, and persists the ending', () => {
+    const state = createDefaultProgression();
+    expect(restoreAstrolabe(state, 'cos')).toBe(false);
+    for (const id of ['dragon', 'witch', 'lich'] as const) {
+      state.defeatedBosses.push(id);
+      recordBossRelic(state.bossRelics, id, { x: 1, z: 1 });
+      collectBossRelic(state.bossRelics, id);
+    }
+    expect(getCampaignObjective(state).next).toBe('Return to the Celestial Astrolabe');
+    expect(restoreAstrolabe(state, 'neg_sin')).toBe(false);
+    expect(restoreAstrolabe(state, 'cos')).toBe(true);
+    expect(restoreAstrolabe(state, 'cos')).toBe(false);
+    saveProgression(state);
+    expect(getCampaignObjective(loadProgression()).title).toBe('Solstice Haven Restored');
+    expect(resetProgression().astrolabeRestored).toBe(false);
+  });
+
+  it('keeps older victory and pickup records and opens the finale only after the missing pickup', () => {
+    localStorage.setItem('ashen_tangent_progression_v1', JSON.stringify({
+      level: 3,
+      defeatedBosses: ['witch', 'lich', 'dragon'],
+      bossRelics: {
+        witch: { x: 2, z: 4, collected: true },
+        lich: { x: 3, z: 5, collected: true },
+      },
+    }));
+    const oldSave = loadProgression();
+    expect(oldSave.astrolabeRestored).toBe(false);
+    expect(getCampaignObjective(oldSave)).toMatchObject({ recovered: 2, next: 'Inspect Vaelorath’s Crest' });
+    expect(restoreAstrolabe(oldSave, 'cos')).toBe(false);
+    collectBossRelic(oldSave.bossRelics, 'dragon');
+    expect(getCampaignObjective(oldSave).next).toBe('Return to the Celestial Astrolabe');
+  });
+
+  it.each([
+    ['witch', 'lich', 'dragon'], ['witch', 'dragon', 'lich'], ['lich', 'witch', 'dragon'],
+    ['lich', 'dragon', 'witch'], ['dragon', 'witch', 'lich'], ['dragon', 'lich', 'witch'],
+  ] as const)('allows %s → %s → %s to reach the finale', (...order) => {
+    const state = createDefaultProgression();
+    order.forEach((id, index) => {
+      state.defeatedBosses.push(id);
+      recordBossRelic(state.bossRelics, id, { x: 1, z: 1 });
+      collectBossRelic(state.bossRelics, id);
+      expect(getCampaignObjective(state).recovered).toBe(index + 1);
+    });
+    expect(restoreAstrolabe(state, 'cos')).toBe(true);
   });
 
   it('initializes default progression at Level 1 with 0 XP and baseline stats', () => {

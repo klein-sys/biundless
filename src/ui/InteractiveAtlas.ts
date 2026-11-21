@@ -7,6 +7,7 @@ import {
   type BiomeLandmark,
 } from '../world/SunlitValley';
 import type { ProgressionState } from '../rpg/progressionSystem';
+import { BOSS_RELIC_NAMES } from '../rpg/bossRelics';
 
 export interface MapPoint {
   x: number;
@@ -121,10 +122,16 @@ export class InteractiveAtlas {
   ): void {
     const { u: playerU, v: playerV } = worldToMapNormalized(playerPos.x, playerPos.z);
     const headingDeg = ((playerYaw * 180) / Math.PI + 180) % 360;
+    const relicAt = (landmark: BiomeLandmark) =>
+      landmark.id === 'hub' ? undefined : progression?.bossRelics[landmark.id];
 
     const landmarkCardsHtml = BIOME_LANDMARKS.map((lm) => {
-      const { u, v } = worldToMapNormalized(lm.x, lm.z);
-      const isDefeated = lm.id !== 'hub' && progression?.defeatedBosses.includes(lm.id as any);
+      const relic = relicAt(lm);
+      const pin = relic && !relic.collected ? relic : lm;
+      const { u, v } = worldToMapNormalized(pin.x, pin.z);
+      const isDefeated = lm.id !== 'hub' && progression?.defeatedBosses.includes(lm.id);
+      const pinStatus = relic?.collected ? 'Relic recovered' : relic ? 'Relic to inspect'
+        : isDefeated ? 'Vanquished' : '';
       const isSelected = this.selectedLandmark?.id === lm.id;
 
       return `
@@ -139,27 +146,32 @@ export class InteractiveAtlas {
           </button>
           <div class="atlas-pin-label">
             <span class="pin-title">${lm.name}</span>
-            ${isDefeated ? '<span class="pin-status vanquished">✓ VANQUISHED</span>' : ''}
+            ${pinStatus ? `<span class="pin-status ${relic && !relic.collected ? 'relic-awaiting' : 'vanquished'}">${pinStatus}</span>` : ''}
           </div>
         </div>
       `;
     }).join('');
 
-    const selectedInfoHtml = this.selectedLandmark
+    const selected = this.selectedLandmark;
+    const selectedRelic = selected && relicAt(selected);
+    const coordinates = selectedRelic && !selectedRelic.collected ? selectedRelic : selected;
+    const selectedInfoHtml = selected && coordinates
       ? `
-        <div class="atlas-detail-card" style="border-color: ${this.selectedLandmark.accentHex};">
+        <div class="atlas-detail-card" style="border-color: ${selected.accentHex};">
           <div class="detail-top">
             <span class="detail-crest">✧ SUNLIT REALM ATLAS ✧</span>
-            <h3 class="detail-name" style="color: ${this.selectedLandmark.accentHex};">${this.selectedLandmark.name}</h3>
-            <span class="detail-subtitle">${this.selectedLandmark.subtitle}</span>
+            <h3 class="detail-name" style="color: ${selected.accentHex};">${selected.name}</h3>
+            <span class="detail-subtitle">${selected.id === 'hub' ? 'Celestial Astrolabe gazebo · North terrace'
+              : selectedRelic ? `${BOSS_RELIC_NAMES[selected.id]} · ${selectedRelic.collected ? 'Recovered' : 'Ready to inspect'}`
+              : selected.subtitle}</span>
           </div>
           <div class="detail-meta">
-            <div class="meta-pill">Coordinates: <strong>${this.selectedLandmark.x}, ${this.selectedLandmark.z}</strong></div>
-            <div class="meta-pill">Elevation: <strong>+${this.selectedLandmark.baseHeight.toFixed(1)}m</strong></div>
+            <div class="meta-pill">Coordinates: <strong>${Math.round(coordinates.x)}, ${Math.round(coordinates.z)}</strong></div>
+            <div class="meta-pill">Elevation: <strong>+${selected.baseHeight.toFixed(1)}m</strong></div>
           </div>
           <div class="detail-actions">
             <button id="atlas-warp-btn" class="adv-btn primary atlas-btn">
-              <span class="btn-icon">⚡</span> Fast Travel to ${this.selectedLandmark.name}
+              <span class="btn-icon">⚡</span> Fast Travel to ${selected.name}
             </button>
           </div>
         </div>

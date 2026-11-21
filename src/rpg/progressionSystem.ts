@@ -5,6 +5,7 @@
  */
 
 import { loadBossRelics, type BossRelics } from './bossRelics';
+import { CAMPAIGN_RELIC_TOTAL, countCampaignRelics } from './campaign';
 
 export interface ProgressionState {
   level: number;
@@ -16,6 +17,7 @@ export interface ProgressionState {
   quests: Record<string, 'unstarted' | 'active' | 'completed'>;
   defeatedBosses: string[];
   bossRelics: BossRelics;
+  astrolabeRestored: boolean;
   inventory: Record<string, number>;
   weaponLevel: number; // default 1, max 5, +10% damage per level
   maxFlasks: number;   // default 3, max 5
@@ -80,6 +82,7 @@ export function createDefaultProgression(): ProgressionState {
     quests: {},
     defeatedBosses: [],
     bossRelics: {},
+    astrolabeRestored: false,
     inventory: {},
     weaponLevel: 1,
     maxFlasks: 3,
@@ -242,6 +245,7 @@ export function loadProgression(): ProgressionState {
       if (raw) {
         const parsed = JSON.parse(raw);
         const defeatedBosses = Array.isArray(parsed.defeatedBosses) ? parsed.defeatedBosses : [];
+        const bossRelics = loadBossRelics(parsed.bossRelics, defeatedBosses);
         return {
           level: typeof parsed.level === 'number' ? Math.max(1, Math.min(MAX_LEVEL, parsed.level)) : 1,
           xp: typeof parsed.xp === 'number' ? Math.max(0, parsed.xp) : 0,
@@ -251,7 +255,8 @@ export function loadProgression(): ProgressionState {
           harmonics: typeof parsed.harmonics === 'number' ? Math.max(0, parsed.harmonics) : 0,
           quests: typeof parsed.quests === 'object' && parsed.quests ? parsed.quests : {},
           defeatedBosses,
-          bossRelics: loadBossRelics(parsed.bossRelics, defeatedBosses),
+          bossRelics,
+          astrolabeRestored: parsed.astrolabeRestored === true && countCampaignRelics(bossRelics) === CAMPAIGN_RELIC_TOTAL,
           inventory: typeof parsed.inventory === 'object' && parsed.inventory ? parsed.inventory : {},
           weaponLevel: typeof parsed.weaponLevel === 'number' ? Math.max(1, Math.min(MAX_WEAPON_LEVEL, parsed.weaponLevel)) : 1,
           maxFlasks: typeof parsed.maxFlasks === 'number' ? Math.max(3, Math.min(MAX_FLASK_CAPACITY, parsed.maxFlasks)) : 3,

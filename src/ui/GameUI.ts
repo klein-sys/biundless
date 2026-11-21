@@ -41,6 +41,7 @@ import {
   resetProgression,
   type ProgressionState,
 } from '../rpg/progressionSystem';
+import { CAMPAIGN_RELIC_TOTAL, RESTORATION_SIGIL, RESTORATION_WAVE, type CampaignObjective } from '../rpg/campaign';
 import { BOSS_RELIC_NAMES, getRelicWorkedExample, type BossRelic } from '../rpg/bossRelics';
 import { InteractiveAtlas, worldToMapNormalized } from './InteractiveAtlas';
 import { fullscreenManager } from './FullscreenManager';
@@ -97,6 +98,8 @@ export class GameUI {
   private workedModal!: HTMLElement;
   private sigilPicker!: HTMLElement;
   private relicModal!: HTMLElement;
+  private restorationModal!: HTMLElement;
+  private onRestorationClose?: () => void;
   private onRelicClose?: () => void;
   private pickerOpener: HTMLElement | null = null;
   private mobileControls!: HTMLElement;
@@ -206,6 +209,13 @@ export class GameUI {
             </svg>
             <span id="flask-label">3</span>
           </button>
+        </div>
+        <div id="campaign-objective" class="campaign-objective" role="status">
+          <div class="campaign-objective-heading">
+            <strong id="campaign-title"></strong>
+            <span id="campaign-relic-count"></span>
+          </div>
+          <span id="campaign-next"></span>
         </div>
       </div>
 
@@ -388,6 +398,7 @@ export class GameUI {
       <!-- Modals: Settings/Menu, Worked Example, Title Sidebar -->
       <div id="settings-modal" class="modal-backdrop hidden"></div>
       <div id="boss-relic-modal" class="modal-backdrop hidden"></div>
+      <div id="restoration-modal" class="modal-backdrop hidden"></div>
       <div id="worked-modal" class="modal-backdrop hidden"></div>
       <aside id="title-overlay" class="title-sidebar-overlay"></aside>
 
@@ -470,6 +481,7 @@ export class GameUI {
     this.mobileControls = this.root.querySelector('#mobile-controls')!;
     this.sigilPicker = this.root.querySelector('#sigil-picker')!;
     this.relicModal = this.root.querySelector('#boss-relic-modal')!;
+    this.restorationModal = this.root.querySelector('#restoration-modal')!;
     this.settingsModal = this.root.querySelector('#settings-modal')!;
     this.workedModal = this.root.querySelector('#worked-modal')!;
     this.titleOverlay = this.root.querySelector('#title-overlay')!;
@@ -1024,8 +1036,93 @@ export class GameUI {
       (this.atlas && this.atlas.visible) ||
       !this.titleOverlay.classList.contains('hidden') ||
       !this.settingsModal.classList.contains('hidden') ||
-      this.isSigilPickerOpen() || this.isBossRelicOpen() || this.isWorkedExampleOpen()
+      this.isSigilPickerOpen() || this.isBossRelicOpen() || this.isWorkedExampleOpen() || this.isRestorationOpen()
     );
+  }
+
+  public updateCampaignObjective(objective: CampaignObjective): void {
+    const labels = {
+      '#campaign-title': objective.title,
+      '#campaign-next': objective.next,
+      '#campaign-relic-count': `${objective.recovered}/${CAMPAIGN_RELIC_TOTAL} relics`,
+    };
+    for (const [selector, label] of Object.entries(labels)) {
+      const node = this.root.querySelector(selector)!;
+      if (node.textContent !== label) node.textContent = label;
+    }
+  }
+
+  public isRestorationOpen(): boolean {
+    return !this.restorationModal.classList.contains('hidden');
+  }
+
+  public closeRestoration(): void {
+    if (!this.isRestorationOpen()) return;
+    this.restorationModal.classList.add('hidden');
+    const onClose = this.onRestorationClose;
+    this.onRestorationClose = undefined;
+    onClose?.();
+  }
+
+  public showRestoration(onConfirm: (sigil: DerivativeSigilId) => boolean, onClose: () => void): void {
+    this.onRestorationClose = onClose;
+    const choices = ['neg_sin', RESTORATION_SIGIL, 'sec2'] as const;
+    this.restorationModal.innerHTML = `
+      <div class="adventure-modal restoration-panel" role="dialog" aria-modal="true" aria-labelledby="restoration-title">
+        <h2 id="restoration-title">Restore the Celestial Astrolabe</h2>
+        <p>Aurelius · All three relics are in place. Match the wave to its derivative to bring the Astrolabe back to life.</p>
+        <p class="restoration-wave">f(θ) = ${RESTORATION_WAVE}(θ)</p>
+        <div class="restoration-choices" role="group" aria-label="Choose the matching sigil">
+          ${choices.map((id) => `<button type="button" class="adv-btn" data-restoration-sigil="${id}" aria-pressed="false">
+            <strong>${SIGIL_NAMES[id]}</strong><span>${SIGIL_BY_ID[id].shortFormula}</span>
+          </button>`).join('')}
+        </div>
+        <div id="restoration-feedback" role="status">Which sigil gives the slope of sine?</div>
+        <div class="restoration-actions">
+          <button type="button" id="restoration-close" class="adv-btn">Come back later</button>
+          <button type="button" id="restoration-guide" class="adv-btn">Guide me</button>
+          <button type="button" id="restoration-confirm" class="adv-btn primary" disabled>Restore the Astrolabe</button>
+        </div>
+      </div>
+    `;
+    const buttons = Array.from(this.restorationModal.querySelectorAll<HTMLButtonElement>('[data-restoration-sigil]'));
+    const feedback = this.restorationModal.querySelector('#restoration-feedback')!;
+    const confirm = this.restorationModal.querySelector<HTMLButtonElement>('#restoration-confirm')!;
+    const close = this.restorationModal.querySelector<HTMLButtonElement>('#restoration-close')!;
+    let selected: DerivativeSigilId | null = null;
+    confirm.disabled = true;
+    const choose = (sigil: DerivativeSigilId) => {
+      selected = sigil;
+      const correct = sigil === RESTORATION_SIGIL;
+      for (const button of buttons) {
+        button.setAttribute('aria-pressed', String(button.getAttribute('data-restoration-sigil') === sigil));
+      }
+      confirm.disabled = !correct;
+      feedback.classList.toggle('matched', correct);
+      feedback.textContent = correct
+        ? 'The derivative of sin(θ) is cos(θ). At θ = π/3 (60°), cos(π/3) = 1/2. The Cosine sigil matches that slope rule.'
+        : 'Try again. Which rule gives the slope of sine? Choose Guide me to see how it works.';
+    };
+    for (const button of buttons) {
+      button.addEventListener('click', () => choose(button.getAttribute('data-restoration-sigil') as DerivativeSigilId));
+    }
+    this.restorationModal.querySelector('#restoration-guide')!.addEventListener('click', () => choose(RESTORATION_SIGIL));
+    confirm.addEventListener('click', () => {
+      if (selected === RESTORATION_SIGIL && onConfirm(selected)) this.closeRestoration();
+    });
+    close.addEventListener('click', () => this.closeRestoration());
+    this.restorationModal.querySelector('.restoration-panel')!.addEventListener('keydown', (event) => {
+      const key = event as KeyboardEvent;
+      if (key.key !== 'Tab') return;
+      const focusable = Array.from(this.restorationModal.querySelectorAll<HTMLButtonElement>('button')).filter((button) => !button.disabled);
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (document.activeElement !== (key.shiftKey ? first : last)) return;
+      key.preventDefault();
+      (key.shiftKey ? last : first).focus();
+    });
+    this.restorationModal.classList.remove('hidden');
+    buttons[0]?.focus();
   }
 
   public isAtlasOpen(): boolean {
@@ -2038,8 +2135,9 @@ export class GameUI {
       if (mIcon) mIcon.textContent = '📜';
       if (mLabel) mLabel.textContent = 'READ';
     } else if (label.startsWith('Rest')) {
-      if (mIcon) mIcon.textContent = '⛲';
-      if (mLabel) mLabel.textContent = 'REST';
+      const restoring = label.startsWith('Restore');
+      if (mIcon) mIcon.textContent = restoring ? '✧' : '⛲';
+      if (mLabel) mLabel.textContent = restoring ? 'RESTORE' : 'REST';
     } else {
       if (mIcon) mIcon.textContent = '💬';
       if (mLabel) mLabel.textContent = 'TALK';

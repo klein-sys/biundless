@@ -2136,7 +2136,11 @@ export function createPlanterBox(): THREE.Group {
   return group;
 }
 
-export function createAstrolabeGazebo(): { group: THREE.Group; update: (dt: number) => void } {
+export function createAstrolabeGazebo(): {
+  group: THREE.Group;
+  update: (dt: number) => void;
+  setRestored: (restored: boolean, celebrate?: boolean) => void;
+} {
   const group = new THREE.Group();
 
   const stoneMat = new THREE.MeshStandardMaterial({
@@ -2338,18 +2342,33 @@ export function createAstrolabeGazebo(): { group: THREE.Group; update: (dt: numb
   const coreMat = new THREE.MeshStandardMaterial({
     color: 0x38bdf8,
     emissive: 0x0284c7,
-    emissiveIntensity: 1.2,
+    emissiveIntensity: 0.45,
     roughness: 0.1,
     metalness: 0.2,
   });
   const core = new THREE.Mesh(new THREE.IcosahedronGeometry(0.24, 0), coreMat);
+  core.name = 'astrolabe_core';
   orreryGroup.add(core);
 
   let orreryTime = 0;
+  let restorationPulse = 0;
+  const restoredIntensity = 2.4;
   return {
     group,
+    setRestored: (restored, celebrate = false) => {
+      restorationPulse = restored && celebrate ? 1 : 0;
+      coreMat.color.setHex(restored ? 0xffe49c : 0x38bdf8);
+      coreMat.emissive.setHex(restored ? 0xffb84d : 0x0284c7);
+      coreMat.emissiveIntensity = restored ? restoredIntensity : 0.45;
+      core.scale.setScalar(restored ? 1.35 : 1);
+    },
     update: (dt: number) => {
       orreryTime += dt;
+      if (restorationPulse > 0) {
+        restorationPulse = Math.max(0, restorationPulse - dt / 1.8);
+        coreMat.emissiveIntensity = restoredIntensity + restorationPulse * 2.5;
+        core.scale.setScalar(1.35 + restorationPulse * 0.55);
+      }
       ring1.rotation.y += dt * 0.45;
       ring2.rotation.x += dt * 0.6;
       ring3.rotation.z += dt * 0.75;
@@ -4882,6 +4901,7 @@ export interface InteractiveNpcEntity {
 
 export interface SolsticeHavenBundle {
   group: THREE.Group;
+  astrolabe: ReturnType<typeof createAstrolabeGazebo>;
   obstacles: VillageObstacle[];
   interactiveNpcs: InteractiveNpcEntity[];
   update: (dt: number) => void;
@@ -5440,6 +5460,7 @@ export function createSolsticeHavenVillage(): SolsticeHavenBundle {
 
   return {
     group,
+    astrolabe: gazebo,
     obstacles,
     interactiveNpcs,
     update: (dt: number) => {

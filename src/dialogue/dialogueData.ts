@@ -70,7 +70,7 @@ export const DIALOGUE_NODES: Record<string, DialogueNode> = {
     speakerName: 'Archmage Aurelius',
     speakerTitle: 'Guardian of the Astrolabe & Guide Wizard',
     speakerRole: 'aurelius',
-    text: 'Greetings, seeker of resonance. The celestial astrolabe spins above Solstice Haven. The ancient bosses across our valley are manifestations of differential harmonics. What guidance do you seek?',
+    text: 'The Celestial Astrolabe shields Solstice Haven, but its light is fading. Recover Vespera’s Prism, Malakor’s Seal, and Vaelorath’s Crest from the three guardians. Start with Vespera in the Whispering Glade to learn how Sine and Cosine work together. Inspect each relic after the fight, then bring all three to the Astrolabe beside me.',
     choices: [
       {
         text: 'How does differential calculus counter monster wards?',
@@ -97,7 +97,7 @@ export const DIALOGUE_NODES: Record<string, DialogueNode> = {
     speakerName: 'Archmage Aurelius',
     speakerTitle: 'Guardian of the Astrolabe & Guide Wizard',
     speakerRole: 'aurelius',
-    text: 'When Vespera casts Sine, sin(θ), use Cosine, cos(θ). Cosine gives the slope of Sine, so the matching sigil can break her ward. Press Q or tap Sigils to choose it. In Guided math, you can press G or tap Equip Cosine to equip it, then cast at her.',
+    text: 'When Vespera casts Sine, sin(θ), use Cosine, cos(θ). Cosine gives the slope of Sine, so the matching sigil can break her ward. Guided Math equips it for you. With Guided Math off, press Q or tap Sigils to choose it, then cast at her.',
     choices: [
       {
         text: 'What about tangent and secant?',

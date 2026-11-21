@@ -58,7 +58,11 @@ export class DialogueRunner {
 
   public getCurrentNode(): DialogueNode | null {
     if (!this.currentNodeId) return null;
-    return DIALOGUE_NODES[this.currentNodeId] ?? null;
+    const node = DIALOGUE_NODES[this.currentNodeId];
+    if (node?.id === 'aurelius_root' && this.progression.astrolabeRestored) {
+      return { ...node, text: 'The Celestial Astrolabe shines again. Solstice Haven is safe, Spellblade.' };
+    }
+    return node ?? null;
   }
 
   public getAvailableChoices(): DialogueChoice[] {

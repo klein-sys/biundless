@@ -49,6 +49,7 @@ import {
   rememberRelicEvidence,
   type RelicEvidence,
 } from '../rpg/bossRelics';
+import { CAMPAIGN_RELIC_TOTAL, countCampaignRelics, getCampaignObjective, restoreAstrolabe } from '../rpg/campaign';
 import { GameUI, type TelemetrySnapshot } from '../ui/GameUI';
 import {
   GATHERING_NODES,
@@ -151,6 +152,7 @@ export class GameEngine {
   private readonly rimLight: THREE.DirectionalLight;
   private readonly bossLight: THREE.PointLight;
   private readonly audio = new ProceduralAudio();
+  private metAurelius = false;
   private readonly cameraCtrl = new DualCameraController();
   private readonly input: InputManager;
   private readonly ui: GameUI;
@@ -284,6 +286,7 @@ export class GameEngine {
     this.scene.add(this.village.group);
 
     this.progression = loadProgression();
+    this.village.astrolabe.setRestored(this.progression.astrolabeRestored);
     applyProgressionToPlayer(this.player, computeEffectiveStats(this.progression));
 
     this.dialogueRunner = new DialogueRunner(this.progression, {
@@ -409,14 +412,15 @@ export class GameEngine {
       onSelectSigil: (sigil) => this.equipSigil(sigil),
       onToggleSigils: () => this.setSigilPickerOpen(!this.ui.isSigilPickerOpen()),
       onToggleDev: () => {
-        if (!this.started || this.ui.isSigilPickerOpen() || this.ui.isBossRelicOpen() || this.ui.isWorkedExampleOpen()) return;
+        if (!this.started || this.ui.isSigilPickerOpen() || this.ui.isBossRelicOpen() || this.ui.isWorkedExampleOpen()
+          || this.ui.isRestorationOpen()) return;
         this.paused = !this.paused;
         this.syncPauseState('dev');
       },
       onToggleMap: () => {
         if (!this.started) return;
         if (this.isCutscenePlaying || this.dialogueRunner.isOpen || this.ui.isSigilPickerOpen()
-          || this.ui.isBossRelicOpen() || this.ui.isWorkedExampleOpen()) return;
+          || this.ui.isBossRelicOpen() || this.ui.isWorkedExampleOpen() || this.ui.isRestorationOpen()) return;
         this.toggleAtlas();
       },
       onTogglePause: () => {
@@ -441,6 +445,10 @@ export class GameEngine {
         }
         if (this.ui.isBossRelicOpen()) {
           this.ui.closeBossRelic();
+          return;
+        }
+        if (this.ui.isRestorationOpen()) {
+          this.ui.closeRestoration();
           return;
         }
         if (this.ui.isSigilPickerOpen()) {
@@ -470,6 +478,8 @@ export class GameEngine {
       onStartGame: (isNewGame) => {
         if (isNewGame) {
           this.progression = resetProgression();
+          this.metAurelius = false;
+          this.village.astrolabe.setRestored(false);
           this.dialogueRunner.setProgressionState(this.progression);
           applyProgressionToPlayer(this.player, computeEffectiveStats(this.progression));
           this.seenBossCutscenes.clear();
@@ -479,6 +489,7 @@ export class GameEngine {
         }
         this.started = true;
         this.paused = false;
+        this.updateCampaignObjective();
         this.cameraCtrl.resetSmoothing(this.playerPos, this.playerYaw);
         this.input.setUiBlocked(false);
         this.input.setPointerLockAllowed(true);
@@ -572,6 +583,7 @@ export class GameEngine {
         if (!this.ui.isBossRelicOpen()) this.restoreGameplayInput();
       },
       onOpenSettings: () => {
+        if (this.ui.isRestorationOpen()) return;
         if (!this.started) {
           this.ui.openTitleSettings();
           return;
@@ -682,6 +694,7 @@ export class GameEngine {
   }
 
   public toggleAtlas(): void {
+    if (this.ui.isRestorationOpen()) return;
     if (this.ui.isAtlasOpen()) {
       this.ui.closeAtlas();
       this.input.setUiBlocked(!this.started);
@@ -781,11 +794,47 @@ export class GameEngine {
   private inspectBossRelic(id: BossId): void {
     const relic = this.progression.bossRelics[id];
     if (!relic) return;
-    if (collectBossRelic(this.progression.bossRelics, id)) saveProgression(this.progression);
+    if (collectBossRelic(this.progression.bossRelics, id)) {
+      saveProgression(this.progression);
+      this.updateCampaignObjective();
+    }
     this.input.setUiBlocked(true);
     this.input.setPointerLockAllowed(false);
     this.ui.setPointerHintVisible(false);
     this.ui.showBossRelic(id, relic, () => this.restoreGameplayInput(), () => this.warpToLandmark(id, true));
+  }
+
+  private updateCampaignObjective(): void {
+    this.ui.updateCampaignObjective(getCampaignObjective(this.progression, this.metAurelius, this.activeBossId));
+  }
+
+  private canInteractWithAstrolabe(): boolean {
+    if (this.progression.astrolabeRestored
+      || countCampaignRelics(this.progression.bossRelics) !== CAMPAIGN_RELIC_TOTAL) return false;
+    const target = this.village.astrolabe.group.position;
+    return Math.hypot(this.playerPos.x - target.x, this.playerPos.z - target.z) <= 5.5;
+  }
+
+  private openAstrolabeRestoration(): void {
+    this.input.setUiBlocked(true);
+    this.input.setPointerLockAllowed(false);
+    this.input.exitPointerLock();
+    this.ui.setPointerHintVisible(false);
+    this.ui.hideInteractPrompt();
+    this.ui.showRestoration((sigil) => {
+      if (!this.canInteractWithAstrolabe() || !restoreAstrolabe(this.progression, sigil)) return false;
+      this.applySigil(sigil);
+      saveProgression(this.progression);
+      this.village.astrolabe.setRestored(true, true);
+      const position = this.village.astrolabe.group.position;
+      const yaw = Math.atan2(this.playerPos.x - position.x, this.playerPos.z - position.z);
+      this.cameraCtrl.resetSmoothing(this.playerPos, yaw);
+      this.vfx.spawnBurst(position.clone().add(new THREE.Vector3(0, 2.75, 0)), 0xffe49c, 45, 5.5, 1.5);
+      this.audio.playChime(true);
+      this.updateCampaignObjective();
+      this.ui.showToast('Aurelius · The Astrolabe shines again. Solstice Haven is safe.', 7000);
+      return true;
+    }, () => this.restoreGameplayInput());
   }
 
   private leaveBossEncounter(): void {
@@ -1303,6 +1352,8 @@ export class GameEngine {
       const relic = this.nearbyBossRelic();
       if (relic) {
         this.ui.showInteractPrompt(`Inspect ${BOSS_RELIC_NAMES[relic]}`);
+      } else if (this.canInteractWithAstrolabe()) {
+        this.ui.showInteractPrompt('Restore the Celestial Astrolabe');
       } else if (this.nearbyNpc) {
         this.ui.showInteractPrompt(`Talk to ${this.nearbyNpc.name}`);
       } else if (this.nearbyGatherNode) {
@@ -1457,6 +1508,7 @@ export class GameEngine {
     this.uiUpdateCooldown -= realDt;
     if (this.uiUpdateCooldown <= 0) {
       this.uiUpdateCooldown = 0.05;
+      this.updateCampaignObjective();
       const currentRegion = getRegionAt(this.playerPos.x, this.playerPos.z);
       this.ui.updateHUD(
         this.player,
@@ -1691,6 +1743,7 @@ export class GameEngine {
     this.bossRigs[boss.id].root.visible = false;
     this.leaveBossEncounter();
     this.syncBossRelicModels();
+    this.updateCampaignObjective();
 
     this.vfx.spawnBurst(new THREE.Vector3(boss.x, boss.y + 1.8, boss.z), 0xffe49c, 32, 9.0, 0.65);
     this.audio.playChime(true);
@@ -1821,10 +1874,18 @@ export class GameEngine {
       this.inspectBossRelic(relic);
       return;
     }
+    if (this.canInteractWithAstrolabe()) {
+      this.openAstrolabeRestoration();
+      return;
+    }
 
     if (this.nearbyNpc) {
       const node = this.dialogueRunner.startDialogue(this.nearbyNpc.role);
       if (!node) return;
+      if (this.nearbyNpc.role === 'aurelius') {
+        this.metAurelius = true;
+        this.updateCampaignObjective();
+      }
 
       // Switch screen to cursor mode immediately: unlock pointer so user can easily click choices
       this.input.setPointerLockAllowed(false);
