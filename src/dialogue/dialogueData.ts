@@ -216,7 +216,7 @@ export const DIALOGUE_NODES: Record<string, DialogueNode> = {
     speakerName: 'Theron the Smith',
     speakerTitle: 'Weaponsmith & Ward Refiner',
     speakerRole: 'blacksmith',
-    text: 'Clang and resonance! Welcome to my forge, traveler. A blade is only as sharp as the math behind it. If your strike fails to match the ward\'s derivative, the harmonic backlash will jar your bones! Keep your sigil attuned, and strike true.',
+    text: 'Welcome to my forge, traveler. A blade is only as sharp as the math behind it. If your strike fails to match the ward\'s derivative, the harmonic backlash will jar your bones! Keep your sigil attuned, and strike true.',
     choices: [
       {
         text: 'Refine Spellblade (Requires 2 Mithril Ore, 1 Ancient Bone) [+10% Damage]',
@@ -256,7 +256,7 @@ export const DIALOGUE_NODES: Record<string, DialogueNode> = {
     speakerName: 'Lyra the Herbalist',
     speakerTitle: 'Flora Botanist & Potion Brewer',
     speakerRole: 'herbalist',
-    text: 'The meadow flowers are blooming with radiant energy today! If you are injured from your travels, drink from your Crimson Flask ([R] on keyboard or the flask icon). You can rest by the town fountain anytime to recover.',
+    text: 'The meadow flowers are blooming with radiant energy today! If you are injured from your travels, drink from your Crimson Flask. Press R on keyboard, or tap the flask icon. You can rest by the town fountain anytime to recover.',
     choices: [
       {
         text: 'Brew Crimson Draught (Requires 2 Moonbell, 1 Phase Essence) [+1 Max Flask]',
@@ -296,7 +296,7 @@ export const DIALOGUE_NODES: Record<string, DialogueNode> = {
     speakerName: 'Eldrin the Scout',
     speakerTitle: 'Frontier Ranger & Trailhead Guide',
     speakerRole: 'scout',
-    text: 'Hail, adventurer! Follow the road through the south gate to the Sunken Sun-Ruins. For Whispering Glade or Skyridge Peak, cross the bridge at the north gate. The left fork leads to the glade, and the right fork climbs to the peak.',
+    text: 'Greetings, traveler! Follow the road through the south gate to the Sunken Sun-Ruins. For Whispering Glade or Skyridge Peak, cross the bridge at the north gate. The left fork leads to the glade, and the right fork climbs to the peak.',
     choices: [
       {
         text: 'Any survival advice for the wilds?',

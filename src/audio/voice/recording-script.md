@@ -40,7 +40,7 @@ A sturdy, gravelly voice with a quick grin. He talks like a craftsman speaking t
 
 ### blacksmith_root.mp3
 
-> Clang and resonance! Welcome to my forge, traveler. A blade is only as sharp as the math behind it. If your strike fails to match the ward's derivative, the harmonic backlash will jar your bones! Keep your sigil attuned, and strike true.
+> Welcome to my forge, traveler. A blade is only as sharp as the math behind it. If your strike fails to match the ward's derivative, the harmonic backlash will jar your bones! Keep your sigil attuned, and strike true.
 
 ### blacksmith_lore.mp3
 
@@ -64,7 +64,7 @@ Alert and practical, with a lean, steady delivery. Give each route or warning en
 
 ### scout_root.mp3
 
-> Hail, adventurer! Follow the road through the south gate to the Sunken Sun-Ruins. For Whispering Glade or Skyridge Peak, cross the bridge at the north gate. The left fork leads to the glade, and the right fork climbs to the peak.
+> Greetings, traveler! Follow the road through the south gate to the Sunken Sun-Ruins. For Whispering Glade or Skyridge Peak, cross the bridge at the north gate. The left fork leads to the glade, and the right fork climbs to the peak.
 
 ### scout_advice.mp3
 
