@@ -1,4 +1,5 @@
 import {
+  AURELIUS_RESTORED_LINE,
   DIALOGUE_NODES,
   QUESTS,
   type DialogueChoice,
@@ -60,7 +61,7 @@ export class DialogueRunner {
     if (!this.currentNodeId) return null;
     const node = DIALOGUE_NODES[this.currentNodeId];
     if (node?.id === 'aurelius_root' && this.progression.astrolabeRestored) {
-      return { ...node, text: 'The Celestial Astrolabe shines again. Solstice Haven is safe, Spellblade.' };
+      return { ...node, ...AURELIUS_RESTORED_LINE };
     }
     return node ?? null;
   }

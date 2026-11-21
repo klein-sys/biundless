@@ -38,7 +38,10 @@ export class ProceduralAudio {
   private combatGain: GainNode | null = null;
   private readonly combatBuffers = new Map<CombatSound, AudioBuffer>();
   private music: HTMLAudioElement | null = null;
+  private musicGain: GainNode | null = null;
   private musicActive = false;
+  private dialogueUrl: string | undefined;
+  private finishDialogueClip: (() => void) | null = null;
   private enabled = true;
   private volume = 0.55;
 
@@ -60,15 +63,58 @@ export class ProceduralAudio {
   }
 
   public connectOpeningVideo(video: HTMLVideoElement): (() => void) | undefined {
+    return this.connectMedia(video);
+  }
+
+  private connectMedia(media: HTMLMediaElement): (() => void) | undefined {
     try {
       this.unlockMaster();
       if (!this.ctx || !this.masterGain) return;
-      const source = this.ctx.createMediaElementSource(video);
+      const source = this.ctx.createMediaElementSource(media);
       source.connect(this.masterGain);
       return () => source.disconnect();
     } catch {
       return undefined;
     }
+  }
+
+  public playDialogue(url: string | undefined): void {
+    if (url === this.dialogueUrl) return;
+    this.stopDialogue();
+    if (!url || !this.enabled || this.volume === 0) return;
+
+    this.dialogueUrl = url;
+    const clip = new Audio(url);
+    const disconnect = this.connectMedia(clip);
+    if (!disconnect) clip.volume = this.volume;
+    const events = new AbortController();
+    const { signal } = events;
+    const finish = () => {
+      if (this.finishDialogueClip !== finish) return;
+      this.finishDialogueClip = null;
+      events.abort();
+      clip.pause();
+      disconnect?.();
+      clip.removeAttribute('src');
+      clip.load();
+      this.setMusicDucked(false);
+    };
+    this.finishDialogueClip = finish;
+    clip.addEventListener('playing', () => this.setMusicDucked(true), { signal });
+    clip.addEventListener('waiting', () => this.setMusicDucked(false), { signal });
+    clip.addEventListener('ended', finish, { signal });
+    clip.addEventListener('error', finish, { signal });
+    void clip.play().catch(finish);
+  }
+
+  public stopDialogue(): void {
+    this.dialogueUrl = undefined;
+    this.finishDialogueClip?.();
+  }
+
+  private setMusicDucked(ducked: boolean): void {
+    if (!this.ctx || !this.musicGain) return;
+    this.musicGain.gain.setTargetAtTime(ducked ? 0.35 : 1, this.ctx.currentTime, ducked ? 0.045 : 0.12);
   }
 
   public unlock(): void {
@@ -104,6 +150,7 @@ export class ProceduralAudio {
     if (this.masterGain && this.ctx) {
       this.masterGain.gain.setTargetAtTime(this.enabled ? this.volume : 0, this.ctx.currentTime, 0.04);
     }
+    if (!enabled || this.volume === 0) this.stopDialogue();
     if (!enabled) {
       this.music?.pause();
     } else if (!wasEnabled && this.musicActive) {
@@ -116,7 +163,10 @@ export class ProceduralAudio {
     if (!this.music) {
       this.music = new Audio(soundtrackUrl);
       this.music.loop = true;
-      this.ctx.createMediaElementSource(this.music).connect(this.masterGain);
+      this.musicGain = this.ctx.createGain();
+      this.musicGain.gain.value = 1;
+      this.ctx.createMediaElementSource(this.music).connect(this.musicGain);
+      this.musicGain.connect(this.masterGain);
     }
     if (this.music.paused) {
       // Browsers can block playback until a user gesture. Unlock retries on input.

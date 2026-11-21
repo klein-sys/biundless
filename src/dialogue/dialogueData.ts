@@ -20,8 +20,14 @@ export interface DialogueNode {
   speakerTitle: string;
   speakerRole: 'aurelius' | 'blacksmith' | 'herbalist' | 'scout';
   text: string;
+  voiceId?: string;
   choices: DialogueChoice[];
 }
+
+export const AURELIUS_RESTORED_LINE = {
+  voiceId: 'aurelius_restored',
+  text: 'The Celestial Astrolabe shines again. Solstice Haven is safe, Spellblade.',
+};
 
 export interface QuestDefinition {
   id: string;

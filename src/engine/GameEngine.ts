@@ -109,7 +109,8 @@ import {
   type MinionTickCallbacks,
 } from '../entities/MinionEntities';
 import { DialogueRunner } from '../dialogue/dialogueRunner';
-import type { DialogueChoice } from '../dialogue/dialogueData';
+import type { DialogueChoice, DialogueNode } from '../dialogue/dialogueData';
+import { getDialogueClip } from '../audio/dialogueClips';
 
 type ActiveProjectile = {
   mesh: THREE.Mesh;
@@ -1870,6 +1871,7 @@ export class GameEngine {
   }
 
   private closeDialogueAndRestoreControls(): void {
+    this.audio.stopDialogue();
     if (this.dialogueRunner.isOpen) {
       this.dialogueRunner.closeDialogue();
     }
@@ -1908,10 +1910,7 @@ export class GameEngine {
       this.input.exitPointerLock();
       this.ui.setPointerHintVisible(false);
 
-      const choices = this.dialogueRunner.getAvailableChoices();
-      this.ui.openDialogue(node, choices, this.progression, (choice) => {
-        this.handleDialogueChoice(choice);
-      });
+      this.showDialogue(node);
       return;
     }
 
@@ -1954,11 +1953,15 @@ export class GameEngine {
     if (res.closed || !res.nextNode) {
       this.closeDialogueAndRestoreControls();
     } else {
-      const nextChoices = this.dialogueRunner.getAvailableChoices();
-      this.ui.openDialogue(res.nextNode, nextChoices, this.progression, (c) => {
-        this.handleDialogueChoice(c);
-      });
+      this.showDialogue(res.nextNode);
     }
+  }
+
+  private showDialogue(node: DialogueNode): void {
+    this.ui.openDialogue(node, this.dialogueRunner.getAvailableChoices(), this.progression, (choice) => {
+      this.handleDialogueChoice(choice);
+    });
+    this.audio.playDialogue(getDialogueClip(node.voiceId ?? node.id));
   }
 
   private spawnShockwave(x: number, z: number, maxRadius: number, damage: number, color: number): void {
