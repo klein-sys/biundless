@@ -42,7 +42,7 @@ export class ProceduralAudio {
   private enabled = true;
   private volume = 0.55;
 
-  public unlock(): void {
+  private unlockMaster(): void {
     if (!this.enabled) return;
     if (!this.ctx) {
       const AudioCtx =
@@ -53,15 +53,34 @@ export class ProceduralAudio {
       this.masterGain = this.ctx.createGain();
       this.masterGain.gain.value = this.volume;
       this.masterGain.connect(this.ctx.destination);
+    }
+    if (this.ctx.state === 'suspended') {
+      void this.ctx.resume().catch(() => {});
+    }
+  }
+
+  public connectOpeningVideo(video: HTMLVideoElement): (() => void) | undefined {
+    try {
+      this.unlockMaster();
+      if (!this.ctx || !this.masterGain) return;
+      const source = this.ctx.createMediaElementSource(video);
+      source.connect(this.masterGain);
+      return () => source.disconnect();
+    } catch {
+      return undefined;
+    }
+  }
+
+  public unlock(): void {
+    if (!this.enabled) return;
+    this.unlockMaster();
+    if (this.ctx && this.masterGain && !this.combatGain) {
       this.combatGain = this.ctx.createGain();
       this.combatGain.gain.value = 0.45;
       this.combatGain.connect(this.masterGain);
       for (const cue of Object.keys(COMBAT_SOUNDS) as CombatSound[]) {
         void this.loadCombatSound(this.ctx, cue);
       }
-    }
-    if (this.ctx.state === 'suspended') {
-      void this.ctx.resume().catch(() => {});
     }
     if (this.musicActive) {
       this.playMusic();

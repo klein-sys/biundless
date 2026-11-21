@@ -38,7 +38,6 @@ import {
   hasSavedProgression,
   getProgressionSummary,
   loadProgression,
-  resetProgression,
   type ProgressionState,
 } from '../rpg/progressionSystem';
 import { CAMPAIGN_RELIC_TOTAL, RESTORATION_SIGIL, RESTORATION_WAVE, type CampaignObjective } from '../rpg/campaign';
@@ -53,8 +52,10 @@ export interface TelemetrySnapshot {
   triangles: number;
 }
 
+export type AdventureEntry = 'first' | 'new' | 'continue' | 'waypoint';
+
 export interface UIHandlers {
-  onStartGame: (isNewGame?: boolean) => void;
+  onStartGame: (entry: AdventureEntry) => void;
   onWarpBoss: (bossId: BossId | 'hub') => void;
   onSelectSigil: (sigil: DerivativeSigilId) => void;
   onTogglePov: () => void;
@@ -709,8 +710,7 @@ export class GameUI {
     if (startHub) {
       startHub.addEventListener('click', () => {
         this.titleOverlay.classList.add('hidden');
-        this.setHUDVisible(true);
-        this.handlers.onStartGame(false);
+        this.handlers.onStartGame('first');
       });
     }
 
@@ -718,8 +718,7 @@ export class GameUI {
     if (continueBtn) {
       continueBtn.addEventListener('click', () => {
         this.titleOverlay.classList.add('hidden');
-        this.setHUDVisible(true);
-        this.handlers.onStartGame(false);
+        this.handlers.onStartGame('continue');
       });
     }
 
@@ -727,10 +726,8 @@ export class GameUI {
     if (newGameBtn) {
       newGameBtn.addEventListener('click', () => {
         if (confirm('Start a new adventure? This will reset your current progress in the Astral Archives.')) {
-          resetProgression();
           this.titleOverlay.classList.add('hidden');
-          this.setHUDVisible(true);
-          this.handlers.onStartGame(true);
+          this.handlers.onStartGame('new');
         }
       });
     }
@@ -745,8 +742,7 @@ export class GameUI {
     for (const id of BOSS_ORDER) {
       this.titleOverlay.querySelector(`#start-${id}-btn`)?.addEventListener('click', () => {
         this.titleOverlay.classList.add('hidden');
-        this.setHUDVisible(true);
-        this.handlers.onStartGame(false);
+        this.handlers.onStartGame('waypoint');
         this.handlers.onWarpBoss(id);
       });
     }

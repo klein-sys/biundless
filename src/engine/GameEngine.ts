@@ -4,6 +4,8 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { ProceduralAudio } from '../audio/ProceduralAudio';
+import { OpeningCinematic } from '../ui/OpeningCinematic';
+import openingFilm from '../ui/the-ward-goes-dark.mp4?url';
 import { VfxSystem } from './VfxSystem';
 import {
   applyDamageToBoss,
@@ -152,6 +154,7 @@ export class GameEngine {
   private readonly rimLight: THREE.DirectionalLight;
   private readonly bossLight: THREE.PointLight;
   private readonly audio = new ProceduralAudio();
+  private readonly opening: OpeningCinematic;
   private metAurelius = false;
   private readonly cameraCtrl = new DualCameraController();
   private readonly input: InputManager;
@@ -228,6 +231,7 @@ export class GameEngine {
 
   constructor(canvas: HTMLCanvasElement, uiRoot: HTMLElement) {
     this.settings = loadSettings();
+    this.opening = new OpeningCinematic(uiRoot, openingFilm);
 
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -424,6 +428,7 @@ export class GameEngine {
         this.toggleAtlas();
       },
       onTogglePause: () => {
+        if (this.opening.skip()) return;
         if (this.isCutscenePlaying) {
           this.endBossCutscene();
           return;
@@ -465,7 +470,7 @@ export class GameEngine {
         this.syncPauseState('gameplay');
       },
       onFirstUserGesture: () => {
-        this.audio.unlock();
+        if (!this.opening.active) this.audio.unlock();
       },
       onPointerLockChange: (locked) => {
         this.ui.setPointerHintVisible(
@@ -475,8 +480,8 @@ export class GameEngine {
     });
 
     this.ui = new GameUI(uiRoot, {
-      onStartGame: (isNewGame) => {
-        if (isNewGame) {
+      onStartGame: (entry) => {
+        if (entry === 'new') {
           this.progression = resetProgression();
           this.metAurelius = false;
           this.village.astrolabe.setRestored(false);
@@ -487,15 +492,13 @@ export class GameEngine {
           this.warpToLandmark('hub');
           this.restoreBossesFromProgression();
         }
-        this.started = true;
-        this.paused = false;
-        this.updateCampaignObjective();
-        this.cameraCtrl.resetSmoothing(this.playerPos, this.playerYaw);
-        this.input.setUiBlocked(false);
-        this.input.setPointerLockAllowed(true);
-        this.audio.setMusicActive(true);
-        this.syncControlVisibility();
-        this.ui.setPointerHintVisible(!this.isMobileUiActive() && !this.input.isPointerLocked());
+        if (entry === 'first' || entry === 'new') {
+          this.input.setUiBlocked(true);
+          this.input.setPointerLockAllowed(false);
+          this.opening.play(this.settings, (video) => this.audio.connectOpeningVideo(video), () => this.beginGameplay());
+        } else {
+          this.beginGameplay();
+        }
       },
       onSaveProgress: () => {
         saveProgression(this.progression);
@@ -686,6 +689,18 @@ export class GameEngine {
 
   private syncControlVisibility(): void {
     this.ui.setMobileControlsVisible(this.started && this.isMobileUiActive());
+  }
+
+  private beginGameplay(): void {
+    this.started = true;
+    this.paused = false;
+    this.lastFrameTimestamp = performance.now();
+    this.updateCampaignObjective();
+    this.ui.setHUDVisible(true);
+    this.cameraCtrl.resetSmoothing(this.playerPos, this.playerYaw);
+    this.syncControlVisibility();
+    this.restoreGameplayInput();
+    this.audio.setMusicActive(true);
   }
 
   public getActiveBoss(): BossRuntime | null {
@@ -939,6 +954,7 @@ export class GameEngine {
 
   private tick(): void {
     this.timer.update();
+    if (this.opening.active) return;
     const rawRealDt = Math.min(Math.max(this.timer.getDelta(), 0), 0.1);
 
     if (this.settings.fpsCap > 0) {

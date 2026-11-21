@@ -463,7 +463,7 @@ describe('GameUI Title Screen Sidebar & In-Sidebar Settings Switch', () => {
 
     // Clicking Continue starts game without reset and hides sidebar
     continueBtn!.click();
-    expect(startGameSpy).toHaveBeenCalledWith(false);
+    expect(startGameSpy).toHaveBeenCalledWith('continue');
     expect(root.querySelector('#title-overlay')!.classList.contains('hidden')).toBe(true);
   });
 
@@ -555,7 +555,7 @@ describe('GameUI Title Screen Sidebar & In-Sidebar Settings Switch', () => {
     const witchBtn = root.querySelector('#start-witch-btn')!;
     witchBtn.click();
 
-    expect(startGameSpy).toHaveBeenCalledWith(false);
+    expect(startGameSpy).toHaveBeenCalledWith('waypoint');
     expect(warpBossSpy).toHaveBeenCalledWith('witch');
     expect(root.querySelector('#title-overlay')!.classList.contains('hidden')).toBe(true);
   });
@@ -579,9 +579,14 @@ describe('GameUI Title Screen Sidebar & In-Sidebar Settings Switch', () => {
     // Case 2: Confirm reset
     (globalThis as any).confirm = () => true;
     newGameBtn.click();
-    expect(hasSavedProgression()).toBe(false);
-    expect(startGameSpy).toHaveBeenCalledWith(true);
+    expect(startGameSpy).toHaveBeenCalledWith('new');
     expect(root.querySelector('#title-overlay')!.classList.contains('hidden')).toBe(true);
+  });
+
+  it('requests the first-entry route from Enter Sunlit Valley', () => {
+    new GameUI(root as any, handlers, DEFAULT_SETTINGS);
+    root.querySelector('#start-hub-btn')!.click();
+    expect(startGameSpy).toHaveBeenCalledWith('first');
   });
 
   it('updates camera sensitivity on slider input and updates readout label', () => {
