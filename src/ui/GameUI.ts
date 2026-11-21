@@ -650,11 +650,10 @@ export class GameUI {
         <div class="title-card sidebar-view-pane">
           <div class="title-crest">✧ SUNLIT CHRONICLES ✧</div>
           <h1 class="title-main">ASHEN TANGENT</h1>
-          <p class="title-sub">MATH 101 Differential Calculus Open-World Adventure RPG</p>
+          <p class="title-sub">A 3D Fantasy Action RPG · MATH 101</p>
           <p class="title-desc">
-            Explore the vibrant rolling Sunlit Valley. Bosses channel live trigonometric functions <strong>f(θ)</strong>.
-            Attune your blade to their instantaneous derivative <strong>f′(θ)</strong> to break crystalline Phase Wards
-            and trigger devastating Critical Staggers.
+            Explore Sunlit Valley and help protect Solstice Haven. Use trigonometric derivatives to break the
+            guardians’ wards, recover three relics, and restore the Celestial Astrolabe.
           </p>
           <div class="controls-cheat">
             <div><strong>Desktop:</strong> WASD Move · Shift Sprint · Space Jump · Ctrl/C Dash · LMB Strike · RMB/E Cast Sigil · 1–6 Select · Q Sigils · F Interact · M Atlas · V POV · Esc Menu</div>

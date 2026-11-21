@@ -3,7 +3,7 @@
 **MATH 101 – Differential Calculus Semestral Project**  
 *Designing Digital Worlds Through Differential Calculus*
 
-**ASHEN TANGENT** is a playable 3D Dark Fantasy Action RPG web game built with **Three.js (r187)**, **TypeScript**, and **Vite** for both **desktop** and **mobile** browsers.
+**Ashen Tangent** is a colorful 3D fantasy action RPG where trigonometric derivatives power your spells. Explore Sunlit Valley, recover three relics from its guardians, and restore the Celestial Astrolabe that protects Solstice Haven. The game runs in desktop and mobile browsers and is built with **Three.js (r187)**, **TypeScript**, and **Vite**.
 
 ---
 
@@ -26,7 +26,7 @@ Rather than an unrelated quiz popup, all **six basic trigonometric derivatives**
 ## Features
 
 - **3rd-Person ↔ 1st-Person POV Toggle**: Over-the-shoulder orbit with target lock-on and smooth switching (`V` key / HUD button) to 1st-person Astrolabe view with Tangent Reticle.
-- **Ruined Sanctuary Hub + 3 Boss Fog Gates**: Explore the sanctuary and walk into any Fog Gate (`F` / `GATE`), or warp directly via the Boss Menu / Dev Drawer.
+- **Solstice Haven + Three Guardian Encounters**: Meet the townsfolk in Solstice Haven, then travel to Whispering Glade, the Sunken Sun-Ruins, and Skyridge Peak to recover the relics.
 - **Desktop & Mobile Web Controls**:
   - **Desktop**: `WASD` Move · Mouse Look · `LMB` Strike · `RMB`/`E` Cast · `1–6` / Scroll Select Sigil · `Q` Open Sigils · `G` Equip Match (Guided math) · `Space` Jump · `Ctrl`/`C` Dodge · `R` Heal · `F` Interact · `Esc` Menu.
   - **Mobile**: Left thumbstick to move · Right-side drag to look · Tap Sigils, Equip, and Cast.

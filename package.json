@@ -1,7 +1,7 @@
 {
   "name": "ashen-tangent",
   "version": "1.0.0",
-  "description": "ASHEN TANGENT: Chronicles of the Derivative — MATH 101 Differential Calculus Dark Fantasy 3D Action RPG",
+  "description": "A colorful 3D fantasy action RPG set in Sunlit Valley, where trigonometric derivatives power your spells.",
   "private": true,
   "type": "module",
   "scripts": {
