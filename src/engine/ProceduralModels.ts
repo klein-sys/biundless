@@ -137,10 +137,10 @@ export function createArenaEnvironment(): ArenaBundle {
 
   const posAttr = terrainGeo.attributes.position as THREE.BufferAttribute;
   const colors = new Float32Array(posAttr.count * 3);
-  const cGrassA = new THREE.Color(0x5bb54c);
-  const cGrassB = new THREE.Color(0x7ccf58);
-  const cTrail = new THREE.Color(0xd5be8d);
-  const cPlaza = new THREE.Color(0xcfc6ad);
+  const cGrassA = new THREE.Color(0x83a654);
+  const cGrassB = new THREE.Color(0xb0be63);
+  const cTrail = new THREE.Color(0xdabc89);
+  const cPlaza = new THREE.Color(0xd4bc99);
   const cGlade = new THREE.Color(0x6ac48f);
   const cRuins = new THREE.Color(0x7ca66c);
   const cSkyridge = new THREE.Color(0xd1ab6b);
@@ -1138,7 +1138,7 @@ export function createVillageCottage(variant: number = 0): THREE.Group {
 
   // Palette variant tuning
   const wallColors = [0xdfd8cb, 0xe6e0d2, 0xd8cbba, 0xdfd6c6];
-  const roofColors = [0x334155, 0x3b4f3d, 0x7c2d12, 0x4a3c31];
+  const roofColors = [0x3d6a82, 0x53816c, 0xa65a4d, 0x8c653c];
   const timberColors = [0x382212, 0x452a17, 0x301a0d, 0x3e2815];
 
   const wallColor = wallColors[variant % wallColors.length];

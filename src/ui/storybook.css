@@ -1,0 +1,303 @@
+:root {
+  --storybook-ink: #202c37;
+  --storybook-blue: #163746;
+  --storybook-paper: #fff4dc;
+  --storybook-gold: #f1bd65;
+  --adv-bg-card: #fff5df;
+  --adv-bg-glass: rgba(255, 245, 223, 0.94);
+  --adv-gold: #b37c37;
+  --adv-gold-dim: #795320;
+  --adv-border: #b8945780;
+  --adv-border-strong: #b89457d9;
+  --adv-text: var(--storybook-ink);
+  --adv-text-muted: #4a5a60;
+  --adv-shadow: 0 8px 24px #172f3650;
+}
+
+.title-sidebar-overlay {
+  background: linear-gradient(158deg, #203d49 3%, #122b3b 70%, #0d222f);
+  border-color: #8f754a;
+  box-shadow: 13px 0 36px #132b36a6;
+}
+
+.title-sidebar-content {
+  padding-inline: clamp(18px, 3.25vw, 43px);
+  padding-top: max(30px, env(safe-area-inset-top));
+  color: var(--storybook-paper);
+}
+
+.title-card {
+  text-align: left;
+  gap: 10px;
+}
+
+.title-card .title-crest {
+  color: #f5ce87;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.title-card .title-crest::before {
+  content: '';
+  height: 20px;
+  width: 20px;
+  flex: none;
+  border: 1px solid #ecc681;
+  border-radius: 50%;
+  background: radial-gradient(circle, #ffdfa0 0 15%, transparent 19% 43%, #77abb9 45% 49%, transparent 52%);
+  box-shadow: 0 0 14px #e0bc6959;
+}
+
+.title-sidebar-overlay .title-card .title-main {
+  margin: 0;
+  max-width: 8ch;
+  color: #fff2d4;
+  font-family: var(--font-display);
+  font-size: clamp(38px, 4.6vw, 59px);
+  line-height: 0.98;
+  text-align: left;
+  letter-spacing: -0.025em;
+  text-shadow: 0 3px 0 #654a34;
+}
+
+.title-sidebar-overlay .title-card .title-sub {
+  margin: 2px 0 3px;
+  color: #efd798;
+  text-align: left;
+  font-size: 0.92rem;
+}
+
+.title-sidebar-overlay .title-card .title-desc {
+  color: #edf1e9;
+  line-height: 1.54;
+  font-size: 0.87rem;
+  text-align: left;
+  margin-bottom: 4px;
+}
+
+.title-sidebar-overlay .title-card .controls-cheat {
+  border: 0;
+  border-left: 2px solid #638998;
+  border-radius: 0;
+  background: #081b2b68;
+  color: #dce5e3;
+  text-align: left;
+}
+
+.title-card .controls-cheat strong,
+.title-card .warp-label {
+  color: #efcf96;
+}
+
+.title-card .title-quick-warps {
+  border-top: 1px solid #cfac6682;
+  padding-top: 10px;
+}
+
+.title-card .title-quick-warps .adv-btn {
+  text-align: left;
+  padding-inline: 14px;
+}
+
+.title-card .adv-btn:not(.primary),
+.title-card .save-status-badge {
+  background: #264955;
+  border: 1px solid #799197;
+  color: #f9ead0;
+}
+
+.title-card .adv-btn:not(.primary):hover {
+  background: #386272;
+  border-color: var(--storybook-gold);
+  color: #fff7eb;
+}
+
+.title-card .adv-btn.text-btn {
+  min-height: 36px;
+  border: 0;
+  background: transparent;
+}
+
+.adv-btn.primary,
+.title-card .adv-btn.primary {
+  border: 1px solid #b97a31;
+  background: linear-gradient(#f8d586, #e6aa4f);
+  color: #2c281e;
+  box-shadow: 0 3px 0 #8d6034, 0 8px 19px #122b3a38;
+}
+
+.title-card .title-actions > .adv-btn.primary {
+  min-height: 46px;
+}
+
+.title-card .title-footer-row {
+  border-top: 1px solid #cfac6682;
+  padding-top: 7px;
+}
+
+.vitals-pod,
+.campaign-objective,
+.boss-hud,
+.interact-prompt,
+.dialogue-card,
+.adventure-modal,
+.atlas-window {
+  border-color: var(--adv-border-strong);
+  box-shadow: inset 0 0 0 2px #fffdf1a8, var(--adv-shadow);
+}
+
+.campaign-objective {
+  border-left: 4px solid #4c7f8d;
+}
+
+.interact-prompt .key-badge {
+  background: #244b5b;
+  color: #fff3d9;
+}
+
+.dialogue-card {
+  border-radius: 15px;
+  border-top: 4px solid #537e89;
+}
+
+.dialogue-top {
+  border-bottom-color: #ab7d4660;
+}
+
+.dialogue-portrait {
+  border-radius: 14px;
+  flex-shrink: 0;
+  background: #244b5b;
+  box-shadow: inset 0 0 0 3px #1d3846;
+}
+
+.dialogue-portrait[data-role='blacksmith'] { background: #73494c; }
+.dialogue-portrait[data-role='herbalist'] { background: #53745a; }
+.dialogue-portrait[data-role='scout'] { background: #505f3e; }
+
+.dialogue-body {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.dialogue-choice-btn,
+.sigil-choice,
+.satchel-item {
+  background: #fffaeb;
+  border-color: #b8945780;
+  color: var(--storybook-ink);
+}
+
+.dialogue-choice-btn:hover,
+.sigil-choice:hover {
+  background: #f1dfb7;
+  color: var(--storybook-ink);
+}
+
+.atlas-window,
+.adventure-modal {
+  background: linear-gradient(150deg, #fff7e5, #f5e5c6);
+}
+
+.atlas-map-canvas-container {
+  border: 1px solid #778f7e;
+  background: #dbe4c8;
+}
+
+.atlas-detail-card,
+.hero-pause-card,
+.satchel-card {
+  background: #fff6e3;
+  border-color: #b8945790;
+}
+
+.astrolabe-grimoire .worked-math,
+.relic-lesson .relic-example-label {
+  color: #3e6974;
+}
+
+#ui-root :is(button, [role='button']):focus-visible {
+  outline: 3px solid #236d83;
+  outline-offset: 3px;
+}
+
+#ui-root .title-card button:focus-visible {
+  outline-color: #f3cc73;
+}
+
+@media (max-width: 480px) and (orientation: portrait) {
+  .title-sidebar-overlay {
+    top: auto;
+    width: 100%;
+    height: auto;
+    max-height: 70dvh;
+    border-top: 2px solid #caa365;
+    border-radius: 23px 23px 0 0;
+  }
+
+  .title-sidebar-content {
+    min-height: 0;
+    padding: 14px 17px max(14px, env(safe-area-inset-bottom));
+  }
+
+  .title-sidebar-overlay .title-card .title-main {
+    font-size: clamp(28px, 9vw, 40px);
+    max-width: none;
+  }
+
+  .title-sidebar-overlay .title-card .title-desc {
+    display: block;
+    font-size: 0.8rem;
+    line-height: 1.35;
+  }
+
+  .title-sidebar-overlay .title-card .title-sub,
+  .title-card .controls-cheat {
+    display: none;
+  }
+
+  .title-card { gap: 7px; }
+
+  .title-card .title-quick-warps {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .title-card .title-quick-warps .warp-label { grid-column: 1 / -1; }
+
+  .title-card .title-quick-warps .adv-btn {
+    padding: 6px;
+    min-height: 42px;
+    text-align: center;
+    white-space: normal;
+  }
+
+  .dialogue-card {
+    bottom: max(12px, env(safe-area-inset-bottom));
+    max-height: 76dvh;
+    overflow-y: auto;
+    padding: 14px;
+  }
+}
+
+@media (max-width: 480px) and (orientation: portrait) {
+  .region-banner {
+    top: max(70px, calc(env(safe-area-inset-top) + 62px));
+    right: max(12px, env(safe-area-inset-right));
+    left: auto;
+    max-width: min(38vw, 170px);
+    align-items: flex-end;
+    transform: translateY(-8px);
+    text-align: right;
+  }
+
+  .region-banner.visible { transform: translateY(0); }
+  .region-crown,
+  .region-sub { display: none; }
+  .region-title { font-size: 13px; letter-spacing: 0.03em; }
+  .vitals-row { gap: 3px; }
+  .vitals-row .hero-name { font-size: 8px; letter-spacing: 0.025em; }
+}

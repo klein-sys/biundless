@@ -648,7 +648,7 @@ export class GameUI {
     this.titleOverlay.innerHTML = `
       <div class="title-sidebar-content">
         <div class="title-card sidebar-view-pane">
-          <div class="title-crest">✧ SUNLIT CHRONICLES ✧</div>
+          <div class="title-crest">SUNLIT VALLEY</div>
           <h1 class="title-main">ASHEN TANGENT</h1>
           <p class="title-sub">A 3D Fantasy Action RPG · MATH 101</p>
           <p class="title-desc">
@@ -2163,6 +2163,7 @@ export class GameUI {
       scout: '🏹',
     };
     this.dialoguePortrait.textContent = roleIcons[node.speakerRole] ?? '✧';
+    this.dialoguePortrait.dataset.role = node.speakerRole;
     this.dialogueSpeakerName.textContent = node.speakerName;
     this.dialogueSpeakerTitle.textContent = node.speakerTitle;
     this.dialogueLvl.textContent = `Astral Lvl ${progression.level}`;

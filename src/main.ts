@@ -1,4 +1,5 @@
 import './ui/styles.css';
+import './ui/storybook.css';
 import { GameEngine } from './engine/GameEngine';
 
 const canvas = document.getElementById('game-canvas') as HTMLCanvasElement;

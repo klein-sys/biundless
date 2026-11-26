@@ -1,3 +1,4 @@
+import { dressSpellblade, dressStorybookRegion, dressStorybookVillage, loadStorybookModels, paintGuardian, type StorybookPlayer } from './StorybookArt';
 import * as THREE from 'three';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
@@ -224,6 +225,9 @@ export class GameEngine {
   private uiUpdateCooldown = 0;
 
   // Boss Encounter Cinematic Cutscenes
+  private storybookPlayer?: StorybookPlayer;
+  private storybookWeaponPose: 'attack-melee-right' | 'holding-right-shoot' = 'attack-melee-right';
+  private updateStorybookTown?: (dt: number) => void;
   private isCutscenePlaying = false;
   private cutsceneTime = 0;
   private readonly cutsceneDuration = 3.8;
@@ -242,8 +246,8 @@ export class GameEngine {
 
     this.scene = new THREE.Scene();
     // Radiant daylight azure sky & soft horizon haze
-    this.scene.background = new THREE.Color(0x9bd8ff);
-    this.scene.fog = new THREE.FogExp2(0xbbe7ff, 0.0072);
+    this.scene.background = new THREE.Color(0xb9dfed);
+    this.scene.fog = new THREE.FogExp2(0xe2e7d3, 0.0082);
 
     this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 260);
     this.camera.add(new THREE.Object3D());
@@ -261,10 +265,10 @@ export class GameEngine {
     this.composer.addPass(new OutputPass());
 
     // Three.js r187 Daylight Sun & Sky Lighting Rig
-    const hemi = new THREE.HemisphereLight(0xdcf2ff, 0x628e52, 1.25);
+    const hemi = new THREE.HemisphereLight(0xffefda, 0x819275, 1.55);
     this.scene.add(hemi);
 
-    this.keyLight = new THREE.DirectionalLight(0xfffaec, 2.8);
+    this.keyLight = new THREE.DirectionalLight(0xffd9a5, 2.65);
     this.keyLight.position.set(28, 48, -36);
     this.scene.add(this.keyLight.target);
     const cam = this.keyLight.shadow.camera;
@@ -276,7 +280,7 @@ export class GameEngine {
     cam.bottom = -38;
     this.scene.add(this.keyLight);
 
-    this.rimLight = new THREE.DirectionalLight(0xa5daf8, 0.95);
+    this.rimLight = new THREE.DirectionalLight(0xb6dbed, 0.75);
     this.rimLight.position.set(-28, 24, 28);
     this.scene.add(this.rimLight);
 
@@ -620,6 +624,14 @@ export class GameEngine {
     this.syncControlVisibility();
     this.handleResize();
     window.addEventListener('resize', () => this.handleResize());
+
+    const storybook = loadStorybookModels();
+    void dressStorybookVillage(this.village, storybook).then((update) => { this.updateStorybookTown = update; });
+    void dressSpellblade(this.playerRig, storybook).then((appearance) => { this.storybookPlayer = appearance; }).catch(() => {});
+    for (const id of BOSS_ORDER) {
+      paintGuardian(this.bossRigs[id], id);
+      void dressStorybookRegion(this.arena.group, storybook, id, this.village.obstacles).catch(() => {});
+    }
 
     this.timer.connect(document);
     Object.assign(window, {
@@ -984,11 +996,11 @@ export class GameEngine {
       this.totalTime += renderedDt;
       this.stepEnvironmentVisuals();
       if (!this.started) {
-        const orbitRadius = 24;
+        const orbitRadius = 27;
         const orbitSpeed = 0.08;
         const camX = Math.cos(this.totalTime * orbitSpeed) * orbitRadius;
         const camZ = Math.sin(this.totalTime * orbitSpeed) * orbitRadius;
-        const camY = getTerrainHeight(camX, camZ) + 8.5;
+        const camY = getTerrainHeight(camX, camZ) + 13.2;
         this.camera.position.set(camX, camY, camZ);
         this.camera.lookAt(0, 3, 0);
       } else {
@@ -1311,6 +1323,7 @@ export class GameEngine {
 
     // Update Solstice Haven Village animations
     this.village.update(dt);
+    this.updateStorybookTown?.(dt);
 
     // Update Gathering Nodes & Wild Minions
     for (const gn of this.gatheringNodes) {
@@ -1411,6 +1424,12 @@ export class GameEngine {
     this.playerRig.root.position.copy(this.playerPos);
     this.playerRig.root.rotation.y =
       this.cameraCtrl.pov === 'first' ? this.cameraCtrl.yaw + Math.PI : this.playerYaw;
+    this.storybookPlayer?.update(dt,
+      this.bladeSwingTimer > 0 ? this.storybookWeaponPose
+        : !this.isGrounded ? (this.playerVelocityY > 0 ? 'jump' : 'fall')
+          : this.player.dodgeTimer > 0 ? 'sprint'
+            : isMoving ? (isSprinting ? 'sprint' : 'walk') : 'idle',
+    );
     this.playerRig.astrolabeRing.rotation.z += dt * 1.15;
     this.playerRig.outerHaloRing.rotation.z -= dt * 0.72;
     this.playerRig.fpAstrolabeRing.rotation.z += dt * 1.5;
@@ -1582,6 +1601,7 @@ export class GameEngine {
     this.player.attackCooldown = 0.34;
     this.player.comboStep += 1;
     this.bladeSwingTimer = 0.25;
+    this.storybookWeaponPose = 'attack-melee-right';
     this.audio.playSlash(this.player.comboStep);
 
     const sigilHex = new THREE.Color(SIGIL_BY_ID[this.player.selectedSigil].accentHex).getHex();
@@ -1649,6 +1669,7 @@ export class GameEngine {
       return;
     }
     this.player.resonanceCooldown = 0.55;
+    this.storybookWeaponPose = 'holding-right-shoot';
     this.bladeSwingTimer = 0.25;
 
     this.autoEquipBossSigil();

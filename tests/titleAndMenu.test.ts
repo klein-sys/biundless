@@ -431,7 +431,7 @@ describe('GameUI Title Screen Sidebar & In-Sidebar Settings Switch', () => {
     expect(titleMain!.textContent).toContain('ASHEN TANGENT');
 
     const titleCrest = root.querySelector('.title-crest');
-    expect(titleCrest!.textContent).toContain('SUNLIT CHRONICLES');
+    expect(titleCrest!.textContent).toBe('SUNLIT VALLEY');
 
     const controlsCheat = root.querySelector('.controls-cheat');
     expect(controlsCheat).not.toBeNull();
