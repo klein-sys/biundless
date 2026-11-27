@@ -202,6 +202,41 @@
   background: linear-gradient(150deg, #fff7e5, #f5e5c6);
 }
 
+.atlas-window,
+.atlas-heading {
+  color: var(--storybook-ink);
+}
+
+.atlas-window .detail-subtitle { color: var(--adv-text-muted); }
+
+.atlas-window .close-atlas-btn {
+  background: var(--storybook-blue);
+  border-color: #98733c;
+  color: var(--storybook-paper);
+}
+
+.atlas-window .close-atlas-btn:hover { background: #335c6a; }
+
+.sidebar-settings-pane {
+  --adv-text: #fff2d4;
+  --adv-text-muted: #d7e4e1;
+  --adv-gold: #dfb76c;
+  --adv-gold-dim: #f2d191;
+}
+
+.sidebar-settings-pane .sidebar-back-btn,
+.sidebar-settings-pane .pill-btn {
+  background: #254752;
+  border-color: #80999c;
+  color: var(--adv-text);
+}
+
+.sidebar-settings-pane .pill-btn.active {
+  background: var(--storybook-gold);
+  border-color: var(--storybook-gold);
+  color: var(--storybook-ink);
+}
+
 .atlas-map-canvas-container {
   border: 1px solid #778f7e;
   background: #dbe4c8;
