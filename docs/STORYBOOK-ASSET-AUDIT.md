@@ -39,4 +39,4 @@ Low preset, same fixed plaza camera and renderer. These figures count submitted 
 | Desktop | 1,223 | 1,109 | 154,342 | 154,877 |
 | Phone-sized touch viewport | 756 | 743 | 136,036 | 137,596 |
 
-The 31 selected GLBs total under 1.3 MB. The highest source mesh count is 924 triangles for a villager base. Costumes and repeated environment pieces use low-poly geometry and instancing.
+The 31 selected GLBs total approximately 1.31 MB. The highest source mesh count is 924 triangles for a villager base. Costumes and repeated environment pieces use low-poly geometry and instancing.
